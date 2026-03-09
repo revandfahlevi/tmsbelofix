@@ -13,6 +13,9 @@ use App\Http\Controllers\Api\RoutePlanningController;
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('route-plans', [RoutePlanningController::class, 'index']);
     Route::post('route-plans', [RoutePlanningController::class, 'store']);
+    // Tambahin di dalam grup auth:sanctum ya
+Route::get('route-plans/estimate/{jobOrderId}', [RoutePlanningController::class, 'getEstimateFromJobOrder']);
+    Route::put('route-plans/{routePlan}', [RoutePlanningController::class, 'update']);
     Route::get('route-plans/{routePlan}', [RoutePlanningController::class, 'show']);
     Route::delete('route-plans/{routePlan}', [RoutePlanningController::class, 'destroy']);
     Route::patch('route-plans/{routePlan}/status', [RoutePlanningController::class, 'updateStatus']);

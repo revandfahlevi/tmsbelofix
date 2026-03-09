@@ -10,6 +10,8 @@ use App\Models\RouteWaypoint;
 use App\Services\RoutePlanningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Models\JobOrder;
+use App\Services\GoogleMapsService;
 
 class RoutePlanningController extends Controller
 {
@@ -32,6 +34,71 @@ class RoutePlanningController extends Controller
             'message' => 'Route plan created.',
             'data'    => $route,
         ], 201);
+    }
+
+    public function update(Request $request, RoutePlan $routePlan): JsonResponse
+    {
+        // 1. Validasi Input
+        $validated = $request->validate([
+            'name'                     => 'required|string|max:255',
+            'job_order_id'             => 'nullable|integer',
+            'total_distance_km'        => 'nullable|numeric',
+            'estimated_duration_hours' => 'nullable|numeric',
+            'origin_address'           => 'required|string',
+            'origin_lat'               => 'required|numeric',
+            'origin_lng'               => 'required|numeric',
+            'destination_address'      => 'required|string',
+            'destination_lat'          => 'required|numeric',
+            'destination_lng'          => 'required|numeric',
+            'waypoints'                => 'nullable|array',
+            'waypoints.*.address'      => 'required|string',
+            'waypoints.*.lat'          => 'required|numeric',
+            'waypoints.*.lng'          => 'required|numeric',
+            'waypoints.*.sequence'     => 'required|integer',
+        ]);
+
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        
+        try {
+            // 2. Update tabel utama (route_plans)
+            $routePlan->update([
+                'name'                     => $validated['name'],
+                'job_order_id'             => $validated['job_order_id'],
+                'total_distance_km'        => $validated['total_distance_km'],
+                'estimated_duration_hours' => $validated['estimated_duration_hours'],
+                'origin_address'           => $validated['origin_address'],
+                'origin_lat'               => $validated['origin_lat'],
+                'origin_lng'               => $validated['origin_lng'],
+                'destination_address'      => $validated['destination_address'],
+                'destination_lat'          => $validated['destination_lat'],
+                'destination_lng'          => $validated['destination_lng'],
+            ]);
+
+            // 3. Update tabel anak (route_waypoints)
+            if (isset($validated['waypoints'])) {
+                // Hapus waypoints lama biar bersih
+                $routePlan->routeWaypoints()->delete();
+                
+                // Insert waypoints baru
+                $routePlan->routeWaypoints()->createMany($validated['waypoints']);
+            }
+
+            \Illuminate\Support\Facades\DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Route plan updated successfully.',
+                'data'    => $routePlan->load('routeWaypoints'),
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update route: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show(RoutePlan $routePlan): JsonResponse
@@ -95,5 +162,36 @@ class RoutePlanningController extends Controller
         $routePlan->delete();
 
         return response()->json(['success' => true, 'message' => 'Route plan deleted.']);
+    }
+
+    // 👇 INI DIA FUNGSI BARUNYA UDAH MASUK KE DALAM CLASS 👇
+    public function getEstimateFromJobOrder($jobOrderId, GoogleMapsService $mapsService)
+    {
+        // 1. Ambil data Job Order beserta titik-titiknya (asumsi lu nyimpen origin/dest di Job Order)
+        $jobOrder = JobOrder::with('waypoints')->findOrFail($jobOrderId);
+
+        // Asumsi di tabel Job Order ada origin_lat, origin_lng, destination_lat, destination_lng
+        $origin = ['lat' => $jobOrder->origin_lat, 'lng' => $jobOrder->origin_lng];
+        $destination = ['lat' => $jobOrder->destination_lat, 'lng' => $jobOrder->destination_lng];
+        
+        // Ambil waypoints dari Job Order kalau ada
+        $waypoints = $jobOrder->waypoints->map(function($wp) {
+            return ['lat' => $wp->lat, 'lng' => $wp->lng];
+        })->toArray();
+
+        // 2. Lempar ke Google Maps Mock Service
+        $estimate = $mapsService->calculateRouteEstimate($origin, $destination, $waypoints);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'job_order_id' => $jobOrder->id,
+                'origin' => $origin,
+                'destination' => $destination,
+                'waypoints' => $waypoints,
+                'distance_km' => $estimate['distance_km'],
+                'duration_hours' => $estimate['duration_hours']
+            ]
+        ]);
     }
 }
