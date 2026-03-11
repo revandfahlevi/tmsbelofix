@@ -120,6 +120,7 @@ const showPassword = ref(false)
 const demoAccounts = [
   { label: 'Admin',  email: 'admin@tms.local',   password: 'Admin@TMS2024!' },
   { label: 'Driver', email: 'driver1@tms.local',  password: 'Driver@123!' },
+  { label: 'User',   email: 'user@tms.local',   password: 'User@TMS2024!' },
 ] 
 
 function fillDemo(acc: any) {

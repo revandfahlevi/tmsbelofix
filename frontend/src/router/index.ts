@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import path from 'path'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -27,6 +28,9 @@ export const router = createRouter({
         { path: 'pod', component: () => import('@/pages/admin/PODPage.vue') },
         { path: 'routes', component: () => import('@/pages/admin/RoutePlanningPage.vue') },
         { path: 'utilization', component: () => import('@/pages/admin/UtilizationPage.vue') },
+        { path: 'warehouse/inbound', component: () => import('@/pages/admin/InboundPage.vue') },
+        { path: 'warehouse/inventory', component: () => import('@/pages/admin/InventoryPage.vue') },
+        { path: 'warehouse/outbound', component: () => import('@/pages/admin/OutboundPage.vue') },
       ]
     },
 
@@ -53,6 +57,7 @@ export const router = createRouter({
         { path: 'tracking', component: () => import('@/pages/admin/GPSTrackingPage.vue') },
         { path: 'deliveries', component: () => import('@/pages/admin/JobOrderPage.vue') },
         { path: 'reports', component: () => import('@/pages/admin/UtilizationPage.vue') },
+        { path: 'warehouse', component: () => import('@/pages/user/WarehousePage.vue') },
       ]
     },
 

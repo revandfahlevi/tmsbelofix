@@ -95,7 +95,8 @@ import {
   Truck, LogOut, Menu,
   LayoutDashboard, Package, Map, Activity,
   FileImage, Calculator, BarChart3, Layers,
-  Navigation, Receipt
+  Navigation, Receipt, Warehouse, ArrowDownToLine,
+  ArrowUpFromLine, BoxesIcon
 } from 'lucide-vue-next'
 import NotificationBell from '@/components/NotificationBell.vue'
 
@@ -104,30 +105,42 @@ const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(false)
 
-
 const ADMIN_NAV = [
   { section: 'Dashboard', items: [
     { label: 'Dashboard', icon: LayoutDashboard, to: '/admin' },
   ]},
-  { section: 'Operasional', items: [
+  { section: 'Order Management', items: [
     { label: 'Job Order', icon: Package, to: '/admin/job-orders' },
+  ]},
+  { section: 'Transport Planning', items: [
     { label: 'Route Planning', icon: Map, to: '/admin/routes' },
-    { label: 'Carrier Assignment', icon: Truck, to: '/admin/carrier-assignment' },
-    { label: 'Dispatch', icon: Navigation, to: '/admin/dispatch' },
-  ]},
-  { section: 'Armada', items: [  // ← section baru
-    { label: 'Master Kendaraan', icon: Truck, to: '/admin/vehicles' },  // ← pindah ke sini
-  ]},
-  { section: 'Logistik', items: [
-    { label: 'GPS Tracking', icon: Activity, to: '/admin/gps-tracking' },
-    { label: 'POD Captured', icon: FileImage, to: '/admin/pod' },
-    { label: 'Update Delivery', icon: Package, to: '/admin/delivery-update' },
-  ]},
-  { section: 'Keuangan & Analitik', items: [
     { label: 'Cost Estimation', icon: Calculator, to: '/admin/cost-estimation' },
-    { label: 'Billing & Invoice', icon: Receipt, to: '/admin/billing' },
+  ]},
+  { section: 'Transport Optimization', items: [
     { label: 'Utilization', icon: BarChart3, to: '/admin/utilization' },
     { label: 'Load Optimization', icon: Layers, to: '/admin/load-optimization' },
+  ]},
+  { section: 'Carrier & Dispatch', items: [
+    { label: 'Carrier Assignment', icon: Truck, to: '/admin/carrier-assignment' },
+    { label: 'Dispatch Truck', icon: Navigation, to: '/admin/dispatch' },
+  ]},
+  { section: 'Tracking', items: [
+    { label: 'GPS Tracking', icon: Activity, to: '/admin/gps-tracking' },
+    { label: 'Update Status', icon: Package, to: '/admin/delivery-update' },
+  ]},
+  { section: 'Delivery', items: [
+    { label: 'POD Captured', icon: FileImage, to: '/admin/pod' },
+  ]},
+  { section: 'Finance', items: [
+    { label: 'Billing & Invoice', icon: Receipt, to: '/admin/billing' },
+  ]},
+  { section: 'Warehouse Management', items: [
+    { label: 'Inbound', icon: ArrowDownToLine, to: '/admin/warehouse/inbound' },
+    { label: 'Inventory', icon: BoxesIcon, to: '/admin/warehouse/inventory' },
+    { label: 'Outbound', icon: ArrowUpFromLine, to: '/admin/warehouse/outbound' },
+  ]},
+  { section: 'Armada', items: [
+    { label: 'Master Kendaraan', icon: Truck, to: '/admin/vehicles' },
   ]},
 ]
 
@@ -137,7 +150,6 @@ const DRIVER_NAV = [
     { label: 'GPS & Navigasi', icon: Navigation, to: '/driver/navigation' },
     { label: 'POD Capture', icon: FileImage, to: '/driver/pod' },
     { label: 'Update Status', icon: Activity, to: '/driver/status-update' },
-    // ← hapus Master Kendaraan dari sini
   ]},
 ]
 
@@ -147,6 +159,9 @@ const USER_NAV = [
     { label: 'Live Tracking', icon: Activity, to: '/user/tracking' },
     { label: 'Pengiriman Saya', icon: Package, to: '/user/deliveries' },
     { label: 'Laporan', icon: BarChart3, to: '/user/reports' },
+  ]},
+  { section: 'Warehouse', items: [
+    { label: 'Lihat Gudang', icon: Layers, to: '/user/warehouse' },
   ]},
 ]
 
