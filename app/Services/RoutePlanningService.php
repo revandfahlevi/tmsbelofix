@@ -35,6 +35,49 @@ class RoutePlanningService
             ->orderBy('created_at', 'desc')
             ->paginate($filters['per_page'] ?? 15);
     }
+public function optimizeRoute(RoutePlan $routePlan): RoutePlan
+{
+    $optimizer = new \App\Services\RouteOptimizationService();
+    
+    $waypoints  = $routePlan->waypoints()
+        ->orderBy('sequence')
+        ->get()
+        ->toArray();
+    
+    $origin      = $waypoints[0]   ?? null;
+    $destination = end($waypoints) ?? null;
+    $midpoints   = array_slice($waypoints, 1, -1);
+
+    if (!$origin || !$destination) {
+        throw new \Exception('Route must have at least 2 waypoints');
+    }
+
+    $result = $optimizer->optimizeWaypoints(
+        $origin['lat'],      $origin['lng'],
+        $destination['lat'], $destination['lng'],
+        $midpoints
+    );
+
+    $routePlan->update([
+        'total_distance_km'       => $result['distance_km'],
+        'estimated_duration_hours'=> $result['duration_hours'],
+        'is_optimized'            => true,
+        'optimization_source'     => $result['source'],
+    ]);
+
+    return $routePlan->fresh('waypoints');
+}
+
+public function getEstimateFromJobOrder(int $jobOrderId): array
+{
+    $jo        = \App\Models\JobOrder::findOrFail($jobOrderId);
+    $optimizer = new \App\Services\RouteOptimizationService();
+
+    return $optimizer->calculateRoute(
+        $jo->origin_lat,      $jo->origin_lng,
+        $jo->destination_lat, $jo->destination_lng
+    );
+}
 
     public function create(array $data, User $authUser): RoutePlan
     {

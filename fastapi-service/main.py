@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 security = HTTPBearer()
-LARAVEL_API_URL  = os.getenv("LARAVEL_API_URL", "http://localhost:8000/api/v1")
+LARAVEL_API_URL  = os.getenv("LARAVEL_API_URL", "http://localhost:8000/api")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 

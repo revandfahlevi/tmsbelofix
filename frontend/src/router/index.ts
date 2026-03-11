@@ -8,7 +8,7 @@ export const router = createRouter({
     { path: '/login', component: () => import('@/pages/LoginPage.vue') },
     { path: '/', component: () => import('@/pages/Index.vue') },
 
-    // Admin - pakai AppLayout
+    // Admin
     {
       path: '/admin',
       component: () => import('@/components/AppLayout.vue'),
@@ -22,6 +22,7 @@ export const router = createRouter({
         { path: 'delivery-update', component: () => import('@/pages/admin/DeliveryUpdatePage.vue') },
         { path: 'dispatch', component: () => import('@/pages/admin/DispatchPage.vue') },
         { path: 'gps-tracking', component: () => import('@/pages/admin/GPSTrackingPage.vue') },
+        { path: 'vehicles', component: () => import('@/pages/admin/VehiclePage.vue') },
         { path: 'load-optimization', component: () => import('@/pages/admin/LoadOptimizationPage.vue') },
         { path: 'pod', component: () => import('@/pages/admin/PODPage.vue') },
         { path: 'routes', component: () => import('@/pages/admin/RoutePlanningPage.vue') },
@@ -29,21 +30,20 @@ export const router = createRouter({
       ]
     },
 
-    // Driver - pakai AppLayout
+    // Driver
     {
       path: '/driver',
       component: () => import('@/components/AppLayout.vue'),
       meta: { requiresAuth: true, role: 'driver' },
       children: [
         { path: '', component: () => import('@/pages/driver/DriverDashboard.vue') },
-        { path: 'assignments', component: () => import('@/pages/driver/DriverDashboard.vue') },
         { path: 'navigation', component: () => import('@/pages/admin/GPSTrackingPage.vue') },
         { path: 'status-update', component: () => import('@/pages/admin/DeliveryUpdatePage.vue') },
         { path: 'pod', component: () => import('@/pages/driver/PODPage.vue') },
       ]
     },
 
-    // User - pakai AppLayout
+    // User
     {
       path: '/user',
       component: () => import('@/components/AppLayout.vue'),
@@ -60,12 +60,12 @@ export const router = createRouter({
     { path: '/:pathMatch(.*)*', component: () => import('@/pages/NotFound.vue') },
   ]
 })
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
 
   if (!auth.user) {
     const stored = localStorage.getItem('tms_user')
-
     if (stored && stored !== 'undefined') {
       try {
         auth.user = JSON.parse(stored)
@@ -75,13 +75,8 @@ router.beforeEach((to) => {
     }
   }
 
-  if (to.meta.requiresAuth && !auth.user) {
-    return '/login'
-  }
-
-  if (to.meta.role && auth.user?.role !== to.meta.role) {
-    return `/${auth.user?.role}`
-  }
+  if (to.meta.requiresAuth && !auth.user) return '/login'
+  if (to.meta.role && auth.user?.role !== to.meta.role) return `/${auth.user?.role}`
 
   return true
 })

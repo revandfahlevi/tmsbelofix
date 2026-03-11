@@ -1,9 +1,22 @@
 <template>
   <div class="p-6 space-y-6">
-    <div>
-      <h1 class="text-2xl font-bold">Penugasan Carrier</h1>
-      <p class="text-sm text-gray-500 mt-1">Tugaskan carrier dan driver ke job order</p>
-    </div>
+   <!-- Ganti header section -->
+<div class="flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold">Penugasan Carrier</h1>
+    <p class="text-sm text-gray-500 mt-1">Tugaskan kendaraan dan driver ke job order</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <span v-if="lastRefreshed" class="text-xs text-gray-400">
+      Update: {{ lastRefreshed }}
+    </span>
+    <button @click="refreshAll" :disabled="loading"
+      class="flex items-center gap-2 border border-gray-200 px-3 py-2 rounded-xl text-sm hover:bg-gray-50 transition disabled:opacity-50">
+      <RefreshCw :class="`w-4 h-4 ${loading ? 'animate-spin' : ''}`" />
+      Refresh
+    </button>
+  </div>
+</div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-16">
@@ -36,10 +49,23 @@
               <PriorityBadge :priority="job.priority" />
             </div>
 
-            <!-- Assign Driver only (Carrier via backend) -->
+            <!-- Pilih Kendaraan -->
+            <div class="mb-3">
+            <!-- Pilih Kendaraan -->
+<select v-model="assignments[job.id].vehicle_id"
+  class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+  <option value="">-- Pilih Kendaraan --</option>
+  <option v-for="v in vehicles" :key="v.id" :value="v.id">
+    {{ v.plate_number }} — {{ v.vehicle_type }}
+    ({{ v.max_weight_kg ? Number(v.max_weight_kg).toLocaleString() + ' kg' : '-' }})
+  </option>
+</select>
+            </div>
+
+            <!-- Pilih Driver -->
             <div class="mb-3">
               <label class="text-xs font-medium text-gray-600">Pilih Driver</label>
-              <select v-model="assignments[job.id]"
+              <select v-model="assignments[job.id].driver_id"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">-- Pilih Driver --</option>
                 <option v-for="d in drivers" :key="d.id" :value="d.id">
@@ -50,11 +76,11 @@
             </div>
 
             <button @click="handleAssign(job)"
-              :disabled="!assignments[job.id] || assigning === job.id"
+              :disabled="!assignments[job.id].vehicle_id || !assignments[job.id].driver_id || assigning === job.id"
               class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
               <Loader2 v-if="assigning === job.id" class="w-4 h-4 animate-spin" />
               <UserCheck v-else class="w-4 h-4" />
-              Tugaskan Driver
+              Tugaskan Kendaraan & Driver
             </button>
 
             <!-- Error -->
@@ -128,8 +154,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
-import { CheckCircle, Loader2, MapPin, Truck, UserCheck } from 'lucide-vue-next'
+import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { CheckCircle, Loader2, MapPin, Truck, UserCheck, RefreshCw } from 'lucide-vue-next'
 import api from '@/lib/axios'
 import { useJobOrders } from '@/composables/useJobOrders'
 import StatusBadge from './StatusBadge.vue'
@@ -137,80 +163,145 @@ import PriorityBadge from './PriorityBadge.vue'
 
 const { jobOrders, loading, fetchJobOrders } = useJobOrders()
 
-// Driver list dari API
-const drivers = ref<any[]>([])
-const assigning = ref<number | null>(null)
-const assignments = reactive<Record<number, number | ''>>({})
-const assignError = reactive<Record<number, string>>({})
+const vehicles       = ref<any[]>([])
+const drivers        = ref<any[]>([])
+const assigning      = ref<number | null>(null)
+const lastRefreshed  = ref('')
+const assignments    = reactive<Record<number, { vehicle_id: number | ''; driver_id: number | '' }>>({})
+const assignError    = reactive<Record<number, string>>({})
 
+let pollInterval: ReturnType<typeof setInterval> | null = null
+
+// ── Computed ──────────────────────────────────────────────────────────
 const pendingJobs = computed(() =>
   jobOrders.value.filter(j => j.status === 'pending' || j.status === 'draft')
 )
-
 const assignedJobs = computed(() =>
   jobOrders.value.filter(j => j.status === 'assigned')
 )
-
 const activeJobs = computed(() =>
   jobOrders.value.filter(j =>
     ['in_progress', 'picked_up', 'in_transit'].includes(j.status)
   )
 )
 
+// Kendaraan aktif saja yang muncul di dropdown
+const activeVehicles = computed(() =>
+  vehicles.value.filter(v => v.status === 'active')
+)
+
+// ── Watch: init form tiap kali pendingJobs berubah ────────────────────
+watch(pendingJobs, () => initAssignments(), { immediate: true })
+
+function initAssignments() {
+  for (const job of pendingJobs.value) {
+    if (!assignments[job.id]) {
+      assignments[job.id] = { vehicle_id: '', driver_id: '' }
+    }
+  }
+}
+
+// ── Fetch Kendaraan — ambil dari /admin/carriers sama seperti VehiclePage ──
+
+// Di CarrierAssignmentPage.vue fetchVehicles
+async function fetchVehicles() {
+  try {
+    const res = await api.get('/admin/carriers', { params: { per_page: 100 } })
+    const raw = typeof res.data === 'string'
+      ? JSON.parse(res.data.replace(/^=/, ''))
+      : res.data
+    const carrierList = raw.data?.data ?? raw.data ?? []
+    console.log('carrier 0 vehicles:', carrierList[0]?.vehicles) // ← cek ini
+
+    const allVehicles: any[] = []
+    carrierList.forEach((carrier: any) => {
+      const vehicleList = carrier.vehicles ?? []
+      vehicleList.forEach((v: any) => {
+        if (v.status === 'available') {
+          allVehicles.push({ ...v, carrier_name: carrier.name })
+        }
+      })
+    })
+    console.log('allVehicles:', allVehicles)
+    vehicles.value = allVehicles
+  } catch (e) {
+    console.error(e)
+    vehicles.value = []
+  }
+}
+
 async function fetchDrivers() {
   try {
-    const res = await api.get('/admin/users', { params: { role: 'driver', status: 'active' } })
+    const res = await api.get('/admin/users', { params: { role: 'driver', per_page: 100 } })
     const raw = typeof res.data === 'string'
       ? JSON.parse(res.data.replace(/^=/, ''))
       : res.data
     drivers.value = raw.data?.data ?? raw.data ?? []
   } catch {
-    // Fallback ke mock drivers jika API belum ada
-    const { MOCK_DRIVERS } = await import('@/lib/mockData')
-    drivers.value = MOCK_DRIVERS
+    drivers.value = []
   }
 }
 
-async function handleAssign(job: any) {
-  const driverId = assignments[job.id]
-  if (!driverId) return
+// ── Refresh semua data (dipanggil manual & polling) ───────────────────
+async function refreshAll() {
+  await Promise.all([
+    fetchJobOrders({ per_page: 100 }),
+    fetchVehicles(),
+    fetchDrivers(),
+  ])
+  lastRefreshed.value = new Date().toLocaleTimeString('id-ID', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  })
+}
 
-  assigning.value = job.id
+// ── Assign ────────────────────────────────────────────────────────────
+async function handleAssign(job: any) {
+  const form = assignments[job.id]
+  if (!form.vehicle_id || !form.driver_id) return
+
+  assigning.value   = job.id
   assignError[job.id] = ''
 
   try {
     const res = await api.post(`/job-orders/${job.id}/assign-driver`, {
-      driver_id: driverId
+      vehicle_id: form.vehicle_id,
+      driver_id:  form.driver_id,
     })
     const raw = typeof res.data === 'string'
       ? JSON.parse(res.data.replace(/^=/, ''))
       : res.data
 
     if (raw.success) {
-      // Update local state
+      // Update local state langsung tanpa tunggu polling
       const idx = jobOrders.value.findIndex(j => j.id === job.id)
       if (idx !== -1) {
         jobOrders.value[idx].status = 'assigned'
-        const driver = drivers.value.find(d => d.id === driverId)
-        if (driver) jobOrders.value[idx].driver = { id: driver.id, name: driver.name }
+        const driver  = drivers.value.find(d => d.id === form.driver_id)
+        const vehicle = vehicles.value.find(v => v.id === form.vehicle_id)
+        if (driver)  jobOrders.value[idx].driver  = { id: driver.id, name: driver.name }
+        if (vehicle) jobOrders.value[idx].vehicle = { id: vehicle.id, plate_number: vehicle.plate_number }
       }
-      assignments[job.id] = ''
+      assignments[job.id] = { vehicle_id: '', driver_id: '' }
     }
   } catch (e: any) {
     const raw = e.response?.data
     const msg = typeof raw === 'string'
       ? JSON.parse(raw.replace(/^=/, '')).message
       : raw?.message
-    assignError[job.id] = msg || 'Gagal menugaskan driver'
+    assignError[job.id] = msg || 'Gagal menugaskan kendaraan & driver'
   } finally {
     assigning.value = null
   }
 }
 
+// ── Lifecycle ─────────────────────────────────────────────────────────
 onMounted(async () => {
-  await Promise.all([
-    fetchJobOrders({ per_page: 100 }),
-    fetchDrivers(),
-  ])
+  await refreshAll()
+  // Polling tiap 30 detik — data kendaraan & job order selalu fresh
+  pollInterval = setInterval(refreshAll, 30000)
+})
+
+onUnmounted(() => {
+  if (pollInterval) clearInterval(pollInterval)
 })
 </script>

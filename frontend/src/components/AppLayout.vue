@@ -104,6 +104,7 @@ const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(false)
 
+
 const ADMIN_NAV = [
   { section: 'Dashboard', items: [
     { label: 'Dashboard', icon: LayoutDashboard, to: '/admin' },
@@ -113,6 +114,9 @@ const ADMIN_NAV = [
     { label: 'Route Planning', icon: Map, to: '/admin/routes' },
     { label: 'Carrier Assignment', icon: Truck, to: '/admin/carrier-assignment' },
     { label: 'Dispatch', icon: Navigation, to: '/admin/dispatch' },
+  ]},
+  { section: 'Armada', items: [  // ← section baru
+    { label: 'Master Kendaraan', icon: Truck, to: '/admin/vehicles' },  // ← pindah ke sini
   ]},
   { section: 'Logistik', items: [
     { label: 'GPS Tracking', icon: Activity, to: '/admin/gps-tracking' },
@@ -130,10 +134,10 @@ const ADMIN_NAV = [
 const DRIVER_NAV = [
   { section: 'Utama', items: [
     { label: 'Dashboard', icon: LayoutDashboard, to: '/driver' },
-    { label: 'Penugasan Saya', icon: Truck, to: '/driver/assignments' },
     { label: 'GPS & Navigasi', icon: Navigation, to: '/driver/navigation' },
     { label: 'POD Capture', icon: FileImage, to: '/driver/pod' },
     { label: 'Update Status', icon: Activity, to: '/driver/status-update' },
+    // ← hapus Master Kendaraan dari sini
   ]},
 ]
 

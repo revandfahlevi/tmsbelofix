@@ -88,6 +88,28 @@ class CarrierController extends Controller
         return response()->json(['success' => true, 'data' => $vehicle]);
     }
 
+    // ★ TAMBAHAN — Kendaraan tersedia untuk dropdown CarrierAssignmentPage
+   public function availableVehicles(): JsonResponse
+{
+    $vehicles = CarrierVehicle::with('carrier:id,name')
+        ->where('status', 'active')  // ← fix: pakai status bukan is_active
+        ->orderBy('plate_number')
+        ->get()
+        ->map(fn($v) => [
+            'id'            => $v->id,
+            'plate_number'  => $v->plate_number,
+            'vehicle_type'  => $v->vehicle_type,
+            'brand'         => $v->brand,
+            'max_weight_kg' => $v->max_weight_kg,
+            'max_volume_m3' => $v->max_volume_m3,
+            'carrier_id'    => $v->carrier_id,
+            'carrier_name'  => $v->carrier?->name ?? '-',
+            'status'        => $v->status,
+        ]);
+
+    return response()->json(['success' => true, 'data' => $vehicles]);
+}
+
     // ── Assignments ────────────────────────────────────────────────
 
     public function assignments(Request $request): JsonResponse

@@ -55,15 +55,24 @@ class RoutePlan extends Model
         return $this->hasMany(RouteWaypoint::class)->orderBy('sequence');
     }
 
-    public static function generateRouteNumber(): string
-    {
-        $year  = now()->format('Y');
-        $month = now()->format('m');
-        $count = static::whereYear('created_at', $year)
-                        ->whereMonth('created_at', $month)
-                        ->count();
-        return sprintf('RT-%s%s-%05d', $year, $month, $count + 1);
-    }
+  public static function generateRouteNumber(): string
+{
+    $year   = now()->format('Y');
+    $month  = now()->format('m');
+    $prefix = sprintf('RT-%s%s-', $year, $month);
+
+    $last = static::withTrashed()  // ← include soft deleted
+        ->where('route_number', 'like', $prefix . '%')
+        ->orderByRaw('CAST(SUBSTRING(route_number, -5) AS UNSIGNED) DESC')
+        ->lockForUpdate()
+        ->first();
+
+    $next = $last
+        ? (int) substr($last->route_number, -5) + 1
+        : 1;
+
+    return $prefix . str_pad($next, 5, '0', STR_PAD_LEFT);
+}
 
     public function canTransitionTo(string $new): bool
     {

@@ -1,4 +1,4 @@
-<template>
+  <template>
   <div class="p-6 space-y-6">
     <div>
       <h1 class="text-2xl font-bold">Load Optimization</h1>

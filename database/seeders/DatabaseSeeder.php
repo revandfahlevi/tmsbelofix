@@ -12,6 +12,10 @@ class DatabaseSeeder extends Seeder
             AdminSeeder::class,
             DemoDriverSeeder::class,
             DemoUserSeeder::class,
+            JobOrderSeeder::class, //wajib sblm carrier
+            CarrierSeeder::class,
+        CarrierVehicleSeeder::class,
+        CarrierAssignmentSeeder::class,
         ]);
     }
 }

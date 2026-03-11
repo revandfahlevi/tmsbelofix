@@ -129,7 +129,7 @@ class RoutePlanningController extends Controller
             'status'            => 'sometimes|in:pending,arrived,departed,skipped',
             'actual_arrival_at' => 'nullable|date',
             'notes'             => 'nullable|string',
-        ]);
+        ]); 
 
         $waypoint = $this->service->updateWaypoint($waypoint, $validated);
 
@@ -137,18 +137,18 @@ class RoutePlanningController extends Controller
     }
 
     public function optimizeRoute(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'coordinates'         => 'required|array|min:2',
-            'coordinates.*.lat'   => 'required|numeric',
-            'coordinates.*.lng'   => 'required|numeric',
-            'coordinates.*.label' => 'nullable|string',
-        ]);
+{
+    $request->validate(['route_plan_id' => 'required|exists:route_plans,id']);
 
-        $optimized = $this->service->getOptimizedRoute($validated['coordinates']);
+    $routePlan = RoutePlan::with('routeWaypoints')->findOrFail($request->route_plan_id);
+    $result = $this->service->optimizeRoute($routePlan);
 
-        return response()->json(['success' => true, 'data' => $optimized]);
-    }
+    return response()->json([
+        'success' => true,
+        'message' => 'Rute berhasil dioptimasi',
+        'data'    => $result,
+    ]);
+}
 
     public function destroy(RoutePlan $routePlan): JsonResponse
     {
@@ -163,35 +163,38 @@ class RoutePlanningController extends Controller
 
         return response()->json(['success' => true, 'message' => 'Route plan deleted.']);
     }
+    
 
     // 👇 INI DIA FUNGSI BARUNYA UDAH MASUK KE DALAM CLASS 👇
-    public function getEstimateFromJobOrder($jobOrderId, GoogleMapsService $mapsService)
-    {
-        // 1. Ambil data Job Order beserta titik-titiknya (asumsi lu nyimpen origin/dest di Job Order)
-        $jobOrder = JobOrder::with('waypoints')->findOrFail($jobOrderId);
-
-        // Asumsi di tabel Job Order ada origin_lat, origin_lng, destination_lat, destination_lng
-        $origin = ['lat' => $jobOrder->origin_lat, 'lng' => $jobOrder->origin_lng];
-        $destination = ['lat' => $jobOrder->destination_lat, 'lng' => $jobOrder->destination_lng];
+  public function getEstimateFromJobOrder($jobOrderId): JsonResponse
+{
+    try {
+        $jobOrder = \App\Models\JobOrder::findOrFail($jobOrderId);
         
-        // Ambil waypoints dari Job Order kalau ada
-        $waypoints = $jobOrder->waypoints->map(function($wp) {
-            return ['lat' => $wp->lat, 'lng' => $wp->lng];
-        })->toArray();
-
-        // 2. Lempar ke Google Maps Mock Service
-        $estimate = $mapsService->calculateRouteEstimate($origin, $destination, $waypoints);
+        $optimizer = new \App\Services\RouteOptimizationService();
+        
+        $result = $optimizer->calculateRoute(
+            (float) $jobOrder->origin_lat,
+            (float) $jobOrder->origin_lng,
+            (float) $jobOrder->destination_lat,
+            (float) $jobOrder->destination_lng
+        );
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'job_order_id' => $jobOrder->id,
-                'origin' => $origin,
-                'destination' => $destination,
-                'waypoints' => $waypoints,
-                'distance_km' => $estimate['distance_km'],
-                'duration_hours' => $estimate['duration_hours']
+            'data'    => [
+                'job_order_id'   => $jobOrder->id,
+                'distance_km'    => $result['distance_km'],
+                'duration_hours' => $result['duration_hours'],
+                'source'         => $result['source'],
             ]
         ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
+    
 }

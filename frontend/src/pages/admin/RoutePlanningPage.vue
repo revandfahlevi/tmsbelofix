@@ -101,12 +101,8 @@
               <div class="w-2 h-2 rounded-full bg-green-500" />
             </div>
             <div class="flex-1 space-y-1">
-              <p class="text-xs font-medium text-gray-700">
-                {{ firstWaypoint(route) }}
-              </p>
-              <p class="text-xs font-medium text-gray-700">
-                {{ lastWaypoint(route) }}
-              </p>
+              <p class="text-xs font-medium text-gray-700">{{ firstWaypoint(route) }}</p>
+              <p class="text-xs font-medium text-gray-700">{{ lastWaypoint(route) }}</p>
             </div>
           </div>
 
@@ -114,13 +110,13 @@
             <div class="text-center">
               <p class="text-xs text-gray-400">Jarak</p>
               <p class="text-sm font-semibold text-gray-700">
-                {{ route.total_distance_km ?? route.total_distance ?? '-' }} km
+                {{ formatDistance(route.total_distance_km ?? route.total_distance) }} km
               </p>
             </div>
             <div class="text-center border-x border-gray-50">
               <p class="text-xs text-gray-400">Estimasi</p>
               <p class="text-sm font-semibold text-gray-700">
-                {{ route.estimated_duration_hours ?? route.estimated_duration ?? '-' }}j
+                {{ formatDuration(route.estimated_duration_hours ?? route.estimated_duration) }}j
               </p>
             </div>
             <div class="text-center">
@@ -211,13 +207,13 @@
               <div class="bg-blue-50 rounded-xl p-3">
                 <p class="text-xs text-gray-500 mb-1">Total Jarak</p>
                 <p class="text-lg font-bold text-blue-700">
-                  {{ selectedRoute.total_distance_km ?? selectedRoute.total_distance ?? '-' }} km
+                  {{ formatDistance(selectedRoute.total_distance_km ?? selectedRoute.total_distance) }} km
                 </p>
               </div>
               <div class="bg-green-50 rounded-xl p-3">
                 <p class="text-xs text-gray-500 mb-1">Estimasi Waktu</p>
                 <p class="text-lg font-bold text-green-700">
-                  {{ selectedRoute.estimated_duration_hours ?? selectedRoute.estimated_duration ?? '-' }} jam
+                  {{ formatDuration(selectedRoute.estimated_duration_hours ?? selectedRoute.estimated_duration) }} jam
                 </p>
               </div>
               <div class="bg-orange-50 rounded-xl p-3">
@@ -370,7 +366,6 @@
 </template>
 
 <script setup lang="ts">
-// 👇 KITA TAMBAHIN 'watch' DI SINI 👇
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import {
   Plus, X, Map, Search, Zap, Pencil, Trash2,
@@ -404,34 +399,43 @@ const form = reactive({
   ] as any[],
 })
 
-// 👇 INI DIA FUNGSI WATCH-NYA KITA TARUH DI SINI 👇
 watch(
   () => form.job_order_id,
   async (newJobOrderId) => {
-    // Kalau ada ID baru DAN bukan lagi mode edit (biar data lama nggak ketimpa)
     if (newJobOrderId && !editingRoute.value) {
       try {
-        const response = await api.get(`/route-plans/estimate/${newJobOrderId}`);
-        // Nyesuain struktur response Laravel kita
-        const data = response.data?.data || response.data;
-
+        const response = await api.get(`/route-plans/estimate/${newJobOrderId}`)
+        const data = response.data?.data || response.data
         if (data) {
-          form.total_distance_km = data.distance_km;
-          form.estimated_duration_hours = data.duration_hours;
+          form.total_distance_km = data.distance_km
+          form.estimated_duration_hours = data.duration_hours
         }
       } catch (error) {
-        console.error('Gagal mengambil estimasi rute dari Mock Service:', error);
+        console.error('Gagal mengambil estimasi rute:', error)
       }
     } else if (!newJobOrderId && !editingRoute.value) {
-      // Kalau user nge-clear dropdown, reset angkanya
-      form.total_distance_km = 0;
-      form.estimated_duration_hours = 0;
+      form.total_distance_km = 0
+      form.estimated_duration_hours = 0
     }
   }
-);
-// 👆 BATAS WATCH 👆
+)
 
-// Fetch routes dari API
+// ✅ Helper format jarak — konversi meter ke km kalau > 1000
+function formatDistance(val: any): string {
+  if (val === null || val === undefined || val === '') return '-'
+  const num = Number(val)
+  if (isNaN(num)) return '-'
+  return num > 1000 ? (num / 1000).toFixed(3) : String(num)
+}
+
+// ✅ Helper format durasi — konversi menit ke jam kalau > 24
+function formatDuration(val: any): string {
+  if (val === null || val === undefined || val === '') return '-'
+  const num = Number(val)
+  if (isNaN(num)) return '-'
+  return num > 24 ? (num / 60).toFixed(1) : String(num)
+}
+
 async function fetchRoutes() {
   loading.value = true
   try {
@@ -441,7 +445,6 @@ async function fetchRoutes() {
       : res.data
     routes.value = raw.data?.data ?? raw.data ?? []
   } catch {
-    // Fallback mock
     const { MOCK_ROUTES } = await import('@/lib/mockData')
     routes.value = MOCK_ROUTES.map((r: any) => ({
       ...r,
@@ -456,7 +459,6 @@ async function fetchRoutes() {
   }
 }
 
-// Ganti jobOrderOptions computed
 const jobOrderOptions = computed(() =>
   jobOrders.value.filter(j =>
     ['pending', 'assigned', 'in_progress', 'picked_up', 'in_transit'].includes(j.status)
@@ -491,7 +493,11 @@ const routeStats = computed(() => [
   },
   {
     label: 'Total Jarak',
-    value: routes.value.reduce((a, r) => a + (r.total_distance_km ?? r.total_distance ?? 0), 0).toLocaleString() + ' km',
+    value: routes.value.reduce((a, r) => {
+      const raw = r.total_distance_km ?? r.total_distance ?? 0
+      const km = raw > 1000 ? raw / 1000 : raw
+      return a + km
+    }, 0).toFixed(1) + ' km',
     sub: 'Semua rute', icon: Route, color: 'text-orange-600', bg: 'bg-orange-100'
   },
   {
@@ -500,7 +506,6 @@ const routeStats = computed(() => [
   },
 ])
 
-// Helper waypoints
 function firstWaypoint(route: any) {
   if (route.waypoints?.length) return route.waypoints[0].address
   return route.origin ?? '-'
@@ -511,7 +516,6 @@ function lastWaypoint(route: any) {
   return route.destination ?? '-'
 }
 
-// Optimize
 async function handleOptimize(route: any) {
   optimizing.value = route.id
   try {
@@ -527,25 +531,27 @@ async function handleOptimize(route: any) {
     }
     showToast('Rute berhasil dioptimasi!')
   } catch {
-    // Simulasi jika API optimize belum ready
-    const saved = Math.floor(Math.random() * 30) + 10
+    const currentDistance = route.total_distance_km ?? route.total_distance ?? 0
+    const maxSaved = Math.floor(currentDistance * 0.1)
+    const saved = maxSaved > 0 ? Math.max(1, Math.floor(Math.random() * maxSaved)) : 0
     const idx = routes.value.findIndex(r => r.id === route.id)
     if (idx !== -1) {
       const curr = routes.value[idx]
+      const newDistance = Math.max(1, currentDistance - saved)
       routes.value[idx] = {
         ...curr,
         is_optimized: true,
-        total_distance_km: (curr.total_distance_km ?? curr.total_distance ?? 0) - saved,
+        total_distance_km: newDistance,
+        total_distance: newDistance,
       }
       if (selectedRoute.value?.id === route.id) selectedRoute.value = routes.value[idx]
     }
-    showToast(`Rute dioptimasi! Hemat ±${saved} km`)
+    showToast(saved > 0 ? `Rute dioptimasi! Hemat ±${saved} km` : 'Rute sudah optimal')
   } finally {
     optimizing.value = null
   }
 }
 
-// Edit
 function editRoute(route: any) {
   editingRoute.value = route
   form.name = route.name
@@ -558,7 +564,6 @@ function editRoute(route: any) {
   showForm.value = true
 }
 
-// Delete
 async function handleDelete(id: any) {
   if (!confirm('Hapus rute ini?')) return
   try {
@@ -573,7 +578,6 @@ async function handleDelete(id: any) {
   }
 }
 
-// Submit create/edit
 async function submitForm() {
   if (!form.name || form.waypoints.filter(w => w.address).length < 2) {
     formError.value = 'Nama rute dan minimal 2 waypoints wajib diisi'
@@ -583,35 +587,24 @@ async function submitForm() {
   submitting.value = true
   formError.value = ''
 
-  // 1. Ambil data titik-titik yang valid (alamatnya diisi)
   const validWaypoints = form.waypoints.filter(w => w.address)
-  
-  // 2. Pisahkan Origin (awal) dan Destination (akhir)
   const origin = validWaypoints[0]
   const destination = validWaypoints[validWaypoints.length - 1]
 
-  // 3. Susun payload sesuai format yang diminta backend
   const payload = {
     name: form.name,
     job_order_id: form.job_order_id || null,
     total_distance_km: form.total_distance_km,
     estimated_duration_hours: form.estimated_duration_hours,
-
-    // --- FIELD ORIGIN ---
     origin_address: origin.address,
-    origin_lat: origin.lat !== null ? origin.lat : -6.2088,   // Fallback: Jakarta
+    origin_lat: origin.lat !== null ? origin.lat : -6.2088,
     origin_lng: origin.lng !== null ? origin.lng : 106.8456,
-
-    // --- FIELD DESTINATION ---
     destination_address: destination.address,
     destination_lat: destination.lat !== null ? destination.lat : -6.1934,
     destination_lng: destination.lng !== null ? destination.lng : 106.8231,
-
-    // --- FIELD WAYPOINTS ---
-    // Mapping ulang memastikan lat & lng selalu ada buat ngelewatin validasi
     waypoints: validWaypoints.map((w, i) => ({
       address: w.address,
-      lat: w.lat !== null ? w.lat : -6.2000, 
+      lat: w.lat !== null ? w.lat : -6.2000,
       lng: w.lng !== null ? w.lng : 106.8300,
       sequence: i + 1
     })),
@@ -688,6 +681,7 @@ function statusLabel(status: string) {
   const map: Record<string, string> = {
     planned: 'Direncanakan', active: 'Aktif',
     completed: 'Selesai', cancelled: 'Dibatalkan',
+    draft: 'Draft',
   }
   return map[status] || status
 }
@@ -697,16 +691,9 @@ function showToast(msg: string) {
   setTimeout(() => toast.value = '', 3000)
 }
 
-onMounted(() => {
-  fetchRoutes()
-  fetchJobOrders({ per_page: 100 })
-})
-
 function onJobOrderSelect() {
   const jo = jobOrderOptions.value.find(j => j.id == form.job_order_id)
   if (!jo) return
-
-  // Auto-fill nama rute dan waypoints dari job order
   form.name = `Rute ${jo.origin_city} - ${jo.destination_city}`
   form.waypoints = [
     {
@@ -723,6 +710,11 @@ function onJobOrderSelect() {
     },
   ]
 }
+
+onMounted(() => {
+  fetchRoutes()
+  fetchJobOrders({ per_page: 100 })
+})
 </script>
 
 <style scoped>

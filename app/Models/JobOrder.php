@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+
 class JobOrder extends Model
 {
     use SoftDeletes;
@@ -37,16 +38,33 @@ class JobOrder extends Model
     ];
 
     // ── Relationships ──────────────────────────────────────────────
+// ── Relationships ──────────────────────────────────────────────
 
+    // 1. Relasi untuk Pembuat (dipanggil oleh JobOrderService)
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    // Alias untuk Pembuat (dipanggil oleh DriverJobController)
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    // 2. Relasi untuk Sopir (nama aslinya)
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_driver_id');
     }
+
+    // Alias untuk Sopir (dipanggil oleh DriverJobController)
+    public function assignedDriver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_driver_id');
+    }
+    
+    // (Biarkan relasi admin, statusLogs, dan applications tetap seperti sebelumnya)
 
     public function admin(): BelongsTo
     {
@@ -57,7 +75,12 @@ class JobOrder extends Model
     {
         return $this->hasMany(JobOrderStatusLog::class);
     }
-
+public function applications(): HasMany
+    {
+        // Catatan: Ganti 'JobApplication::class' dengan nama model Anda yang sebenarnya.
+        // Jika nama model Anda adalah 'Application', maka gunakan 'Application::class'.
+        return $this->hasMany(DriverJobApplication::class);
+    }
     // ── Helpers ────────────────────────────────────────────────────
 
     public static function generateJobNumber(): string
