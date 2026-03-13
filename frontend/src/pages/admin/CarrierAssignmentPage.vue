@@ -1,22 +1,21 @@
 <template>
   <div class="p-6 space-y-6">
-   <!-- Ganti header section -->
-<div class="flex items-center justify-between">
-  <div>
-    <h1 class="text-2xl font-bold">Penugasan Carrier</h1>
-    <p class="text-sm text-gray-500 mt-1">Tugaskan kendaraan dan driver ke job order</p>
-  </div>
-  <div class="flex items-center gap-3">
-    <span v-if="lastRefreshed" class="text-xs text-gray-400">
-      Update: {{ lastRefreshed }}
-    </span>
-    <button @click="refreshAll" :disabled="loading"
-      class="flex items-center gap-2 border border-gray-200 px-3 py-2 rounded-xl text-sm hover:bg-gray-50 transition disabled:opacity-50">
-      <RefreshCw :class="`w-4 h-4 ${loading ? 'animate-spin' : ''}`" />
-      Refresh
-    </button>
-  </div>
-</div>
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold">Penugasan Carrier</h1>
+        <p class="text-sm text-gray-500 mt-1">Tugaskan kendaraan dan driver ke job order</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span v-if="lastRefreshed" class="text-xs text-gray-400">
+          Update: {{ lastRefreshed }}
+        </span>
+        <button @click="refreshAll" :disabled="loading"
+          class="flex items-center gap-2 border border-gray-200 px-3 py-2 rounded-xl text-sm hover:bg-gray-50 transition disabled:opacity-50">
+          <RefreshCw :class="`w-4 h-4 ${loading ? 'animate-spin' : ''}`" />
+          Refresh
+        </button>
+      </div>
+    </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-16">
@@ -49,30 +48,74 @@
               <PriorityBadge :priority="job.priority" />
             </div>
 
-            <!-- Pilih Kendaraan -->
+            <!-- Pilih Kendaraan: Inline Table -->
             <div class="mb-3">
-            <!-- Pilih Kendaraan -->
-<select v-model="assignments[job.id].vehicle_id"
-  class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-  <option value="">-- Pilih Kendaraan --</option>
-  <option v-for="v in vehicles" :key="v.id" :value="v.id">
-    {{ v.plate_number }} — {{ v.vehicle_type }}
-    ({{ v.max_weight_kg ? Number(v.max_weight_kg).toLocaleString() + ' kg' : '-' }})
-  </option>
-</select>
+              <label class="text-xs font-medium text-gray-600">Pilih Kendaraan</label>
+              <div class="mt-1 border border-gray-200 rounded-lg overflow-hidden">
+                <table class="w-full text-sm border-collapse">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="text-left px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Plat</th>
+                      <th class="text-left px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Tipe</th>
+                      <th class="text-right px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Kapasitas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="v in vehicles"
+                      :key="v.id"
+                      @click="assignments[job.id].vehicle_id = v.id"
+                      class="border-t border-gray-100 cursor-pointer transition-colors"
+                      :class="assignments[job.id]?.vehicle_id === v.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'"
+                    >
+                      <td class="px-3 py-2.5 font-bold text-xs tracking-widest">{{ v.plate_number }}</td>
+                      <td class="px-3 py-2.5" :class="assignments[job.id]?.vehicle_id === v.id ? 'text-blue-100' : 'text-gray-600'">
+                        {{ v.vehicle_type }}
+                      </td>
+                      <td class="px-3 py-2.5 text-right text-xs whitespace-nowrap"
+                        :class="assignments[job.id]?.vehicle_id === v.id ? 'text-blue-100' : 'text-gray-400'">
+                        {{ Number(v.max_weight_kg).toLocaleString() }} kg
+                      </td>
+                    </tr>
+                    <tr v-if="vehicles.length === 0">
+                      <td colspan="3" class="text-center py-3 text-gray-400 text-xs">Tidak ada kendaraan tersedia</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <!-- Pilih Driver -->
+            <!-- Pilih Driver: Inline Table -->
             <div class="mb-3">
               <label class="text-xs font-medium text-gray-600">Pilih Driver</label>
-              <select v-model="assignments[job.id].driver_id"
-                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">-- Pilih Driver --</option>
-                <option v-for="d in drivers" :key="d.id" :value="d.id">
-                  {{ d.name }}
-                  <template v-if="d.status"> ({{ d.status }})</template>
-                </option>
-              </select>
+              <div class="mt-1 border border-gray-200 rounded-lg overflow-hidden">
+                <table class="w-full text-sm border-collapse">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="text-left px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Nama</th>
+                      <th class="text-left px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="d in drivers"
+                      :key="d.id"
+                      @click="assignments[job.id].driver_id = d.id"
+                      class="border-t border-gray-100 cursor-pointer transition-colors"
+                      :class="assignments[job.id]?.driver_id === d.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'"
+                    >
+                      <td class="px-3 py-2.5 font-medium">{{ d.name }}</td>
+                      <td class="px-3 py-2.5 text-xs"
+                        :class="assignments[job.id]?.driver_id === d.id ? 'text-blue-100' : 'text-gray-400'">
+                        {{ d.status ?? '-' }}
+                      </td>
+                    </tr>
+                    <tr v-if="drivers.length === 0">
+                      <td colspan="2" class="text-center py-3 text-gray-400 text-xs">Tidak ada driver tersedia</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <button @click="handleAssign(job)"
@@ -83,7 +126,6 @@
               Tugaskan Kendaraan & Driver
             </button>
 
-            <!-- Error -->
             <p v-if="assignError[job.id]" class="text-xs text-red-500 mt-2">
               {{ assignError[job.id] }}
             </p>
@@ -163,16 +205,15 @@ import PriorityBadge from './PriorityBadge.vue'
 
 const { jobOrders, loading, fetchJobOrders } = useJobOrders()
 
-const vehicles       = ref<any[]>([])
-const drivers        = ref<any[]>([])
-const assigning      = ref<number | null>(null)
-const lastRefreshed  = ref('')
-const assignments    = reactive<Record<number, { vehicle_id: number | ''; driver_id: number | '' }>>({})
-const assignError    = reactive<Record<number, string>>({})
+const vehicles      = ref<any[]>([])
+const drivers       = ref<any[]>([])
+const assigning     = ref<number | null>(null)
+const lastRefreshed = ref('')
+const assignments   = reactive<Record<number, { vehicle_id: number | ''; driver_id: number | '' }>>({})
+const assignError   = reactive<Record<number, string>>({})
 
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
-// ── Computed ──────────────────────────────────────────────────────────
 const pendingJobs = computed(() =>
   jobOrders.value.filter(j => j.status === 'pending' || j.status === 'draft')
 )
@@ -185,12 +226,6 @@ const activeJobs = computed(() =>
   )
 )
 
-// Kendaraan aktif saja yang muncul di dropdown
-const activeVehicles = computed(() =>
-  vehicles.value.filter(v => v.status === 'active')
-)
-
-// ── Watch: init form tiap kali pendingJobs berubah ────────────────────
 watch(pendingJobs, () => initAssignments(), { immediate: true })
 
 function initAssignments() {
@@ -201,9 +236,6 @@ function initAssignments() {
   }
 }
 
-// ── Fetch Kendaraan — ambil dari /admin/carriers sama seperti VehiclePage ──
-
-// Di CarrierAssignmentPage.vue fetchVehicles
 async function fetchVehicles() {
   try {
     const res = await api.get('/admin/carriers', { params: { per_page: 100 } })
@@ -211,7 +243,6 @@ async function fetchVehicles() {
       ? JSON.parse(res.data.replace(/^=/, ''))
       : res.data
     const carrierList = raw.data?.data ?? raw.data ?? []
-    console.log('carrier 0 vehicles:', carrierList[0]?.vehicles) // ← cek ini
 
     const allVehicles: any[] = []
     carrierList.forEach((carrier: any) => {
@@ -222,7 +253,6 @@ async function fetchVehicles() {
         }
       })
     })
-    console.log('allVehicles:', allVehicles)
     vehicles.value = allVehicles
   } catch (e) {
     console.error(e)
@@ -242,7 +272,6 @@ async function fetchDrivers() {
   }
 }
 
-// ── Refresh semua data (dipanggil manual & polling) ───────────────────
 async function refreshAll() {
   await Promise.all([
     fetchJobOrders({ per_page: 100 }),
@@ -254,12 +283,11 @@ async function refreshAll() {
   })
 }
 
-// ── Assign ────────────────────────────────────────────────────────────
 async function handleAssign(job: any) {
   const form = assignments[job.id]
   if (!form.vehicle_id || !form.driver_id) return
 
-  assigning.value   = job.id
+  assigning.value     = job.id
   assignError[job.id] = ''
 
   try {
@@ -272,7 +300,6 @@ async function handleAssign(job: any) {
       : res.data
 
     if (raw.success) {
-      // Update local state langsung tanpa tunggu polling
       const idx = jobOrders.value.findIndex(j => j.id === job.id)
       if (idx !== -1) {
         jobOrders.value[idx].status = 'assigned'
@@ -294,10 +321,8 @@ async function handleAssign(job: any) {
   }
 }
 
-// ── Lifecycle ─────────────────────────────────────────────────────────
 onMounted(async () => {
   await refreshAll()
-  // Polling tiap 30 detik — data kendaraan & job order selalu fresh
   pollInterval = setInterval(refreshAll, 30000)
 })
 

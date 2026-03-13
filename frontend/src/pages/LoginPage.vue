@@ -6,7 +6,7 @@
         <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
           <Truck class="w-7 h-7 text-white" />
         </div>
-        <h1 class="text-2xl font-bold text-gray-800">FleetWise Connect</h1>
+        <h1 class="text-2xl font-bold text-gray-800">TMS Connect</h1>
         <p class="text-sm text-gray-500 mt-1">Transport Management System</p>
       </div>
 

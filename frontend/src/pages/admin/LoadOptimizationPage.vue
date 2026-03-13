@@ -1,4 +1,4 @@
-  <template>
+<template>
   <div class="p-6 space-y-6">
     <div>
       <h1 class="text-2xl font-bold">Load Optimization</h1>
@@ -10,14 +10,33 @@
       <div class="bg-white rounded-xl border p-5 shadow-sm space-y-4">
         <h2 class="font-semibold">Tambah Item Muatan</h2>
 
+        <!-- Pilih Kendaraan: Inline Table -->
         <div>
           <label class="text-xs font-medium text-gray-600">Pilih Kendaraan</label>
-          <select v-model="selectedVehicle" class="input-field">
-            <option value="">-- Pilih Kendaraan --</option>
-            <option v-for="c in carriers" :key="c.id" :value="c.id">
-              {{ c.name }} — Kapasitas {{ c.capacity.toLocaleString() }} kg
-            </option>
-          </select>
+          <div class="mt-1 border border-gray-200 rounded-lg overflow-hidden">
+            <table class="w-full text-sm border-collapse">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="text-left px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Kendaraan</th>
+                  <th class="text-right px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">Kapasitas</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="c in carriers"
+                  :key="c.id"
+                  @click="selectedVehicle = c.id"
+                  class="border-t border-gray-100 cursor-pointer transition-colors"
+                  :class="selectedVehicle === c.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'"
+                >
+                  <td class="px-3 py-2.5 font-medium">{{ c.name }}</td>
+                  <td class="px-3 py-2.5 text-right text-xs" :class="selectedVehicle === c.id ? 'text-blue-100' : 'text-gray-400'">
+                    {{ c.capacity.toLocaleString() }} kg
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Vehicle capacity bar -->
@@ -74,8 +93,7 @@
           <span class="text-xs text-gray-500">{{ items.length }} item</span>
         </div>
 
-        <div v-if="items.length === 0"
-          class="text-center py-8 text-gray-400">
+        <div v-if="items.length === 0" class="text-center py-8 text-gray-400">
           <Layers class="w-10 h-10 mx-auto mb-2 opacity-30" />
           <p class="text-sm">Belum ada item ditambahkan</p>
         </div>
@@ -93,16 +111,14 @@
                 <span v-if="item.fragile" class="text-orange-500 ml-1">⚠ Fragile</span>
               </p>
             </div>
-            <button @click="removeItem(i)"
-              class="text-gray-300 hover:text-red-500 transition">
+            <button @click="removeItem(i)" class="text-gray-300 hover:text-red-500 transition">
               <X class="w-4 h-4" />
             </button>
           </div>
         </div>
 
         <!-- Summary -->
-        <div v-if="items.length > 0"
-          class="mt-4 pt-4 border-t space-y-1">
+        <div v-if="items.length > 0" class="mt-4 pt-4 border-t space-y-1">
           <div class="flex justify-between text-sm">
             <span class="text-gray-500">Total Berat</span>
             <span class="font-medium">{{ totalWeight.toLocaleString() }} kg</span>
