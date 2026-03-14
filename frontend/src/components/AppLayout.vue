@@ -59,8 +59,7 @@
     </aside>
 
     <!-- Overlay mobile -->
-    <div v-if="sidebarOpen"
-      @click="sidebarOpen = false"
+    <div v-if="sidebarOpen" @click="sidebarOpen = false"
       class="fixed inset-0 bg-black/50 z-40 lg:hidden" />
 
     <!-- Main -->
@@ -75,6 +74,12 @@
           <h2 class="text-sm font-medium text-gray-600">{{ pageTitle }}</h2>
         </div>
         <div class="flex items-center gap-2">
+          <!-- Tombol aktifkan notif — muncul kalau belum granted -->
+          <button v-if="!notifEnabled"
+            @click="enableNotifications"
+            class="flex items-center gap-1 text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full hover:bg-yellow-200 transition animate-pulse font-medium">
+            🔔 Aktifkan Notifikasi
+          </button>
           <NotificationBell />
         </div>
       </header>
@@ -88,23 +93,81 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
   Truck, LogOut, Menu,
   LayoutDashboard, Package, Map, Activity,
   FileImage, Calculator, BarChart3, Layers,
-  Navigation, Receipt, Warehouse, ArrowDownToLine,
+  Navigation, Receipt, ArrowDownToLine,
   ArrowUpFromLine, BoxesIcon
 } from 'lucide-vue-next'
 import NotificationBell from '@/components/NotificationBell.vue'
+import { useNotification } from '@/composables/useNotification'
+import { requestPermissionAndGetToken } from '@/lib/firebase'
+import api from '@/lib/axios'
 
-const auth = useAuthStore()
-const route = useRoute()
-const router = useRouter()
+const auth        = useAuthStore()
+const route       = useRoute()
+const router      = useRouter()
 const sidebarOpen = ref(false)
+const notifEnabled = ref(false)
 
+const { startListening, stopListening } = useNotification()
+
+// ── Aktifkan notifikasi — HARUS dari klik user ────────────
+async function enableNotifications() {
+  try {
+    const token = await requestPermissionAndGetToken()
+    if (!token) {
+      console.warn('[FCM] Gagal dapat token')
+      return
+    }
+    await api.put('/auth/update-fcm-token', { fcm_token: token })
+    notifEnabled.value = true
+    console.log('[FCM] ✅ Token tersimpan ke backend')
+  } catch (e) {
+    console.error('[FCM] enableNotifications error:', e)
+  }
+}
+
+// ── Kalau sudah granted, langsung ambil token tanpa popup ──
+async function autoSetupIfGranted() {
+  if (Notification.permission !== 'granted') return
+  try {
+    const token = await requestPermissionAndGetToken()
+    if (token) {
+      await api.put('/auth/update-fcm-token', { fcm_token: token })
+      notifEnabled.value = true
+      console.log('[FCM] ✅ Auto token tersimpan:', token.slice(0, 20) + '...')
+    }
+  } catch (e) {
+    console.error('[FCM] autoSetup error:', e)
+  }
+}
+
+onMounted(async () => {
+  // 1. Daftar Service Worker
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      console.log('[SW] ✅ Service Worker terdaftar')
+    } catch (e) {
+      console.error('[SW] Gagal daftar:', e)
+    }
+  }
+
+  // 2. Cek permission — kalau sudah granted, langsung setup tanpa popup
+  await autoSetupIfGranted()
+
+  // 3. Start listen foreground messages
+  startListening()
+})
+
+onUnmounted(() => stopListening())
+
+// ── Nav ───────────────────────────────────────────────────
 const ADMIN_NAV = [
   { section: 'Dashboard', items: [
     { label: 'Dashboard', icon: LayoutDashboard, to: '/admin' },

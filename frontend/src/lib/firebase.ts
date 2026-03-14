@@ -1,9 +1,9 @@
 // src/lib/firebase.ts
-import { initializeApp, getApps, getApp } from 'firebase/app'
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import { getMessaging, getToken, onMessage, type MessagePayload } from 'firebase/messaging'
 
 function getFirebaseConfig() {
-  const config = {
+  return {
     apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
     projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -11,46 +11,37 @@ function getFirebaseConfig() {
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     appId:             import.meta.env.VITE_FIREBASE_APP_ID,
   }
-  // Debug — hapus setelah berhasil
-  console.log('[Firebase] Config loaded:', config)
-  if (!config.projectId) {
-    throw new Error('[Firebase] projectId kosong — cek .env dan restart npm run dev')
-  }
-  return config
 }
 
-// Lazy init — hanya dijalankan saat pertama kali dipanggil
-function getFirebaseApp() {
+export function getFirebaseApp(): FirebaseApp {
   if (getApps().length > 0) return getApp()
-  return initializeApp(getFirebaseConfig())
+  const config = getFirebaseConfig()
+  console.log('Firebase Project ID:', config.projectId)
+  return initializeApp(config)
 }
 
-export async function requestNotificationPermission(): Promise<string | null> {
+// Dipanggil dari KLIK TOMBOL — butuh user gesture
+export async function requestPermissionAndGetToken(): Promise<string | null> {
   try {
-    if (!('Notification' in window)) {
-      console.warn('[FCM] Browser tidak support notifikasi')
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      console.warn('[FCM] Browser tidak support')
       return null
     }
-    if (!('serviceWorker' in navigator)) {
-      console.warn('[FCM] Browser tidak support Service Worker')
-      return null
-    }
-
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') {
-      console.warn('[FCM] Permission ditolak user')
+      console.warn('[FCM] Permission ditolak:', permission)
       return null
     }
-
+    const sw = await navigator.serviceWorker.ready
     const messaging = getMessaging(getFirebaseApp())
     const token = await getToken(messaging, {
       vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+      serviceWorkerRegistration: sw,
     })
-
-    console.log('[FCM] Token berhasil:', token)
+    console.log('[FCM] Token:', token)
     return token
   } catch (err) {
-    console.error('[FCM] Error:', err)
+    console.error('[FCM] error:', err)
     return null
   }
 }
