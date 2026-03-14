@@ -1,11 +1,68 @@
 <template>
   <div class="p-6 space-y-6">
-    <div>
-      <h1 class="text-2xl font-bold">Dashboard Driver</h1>
-      <p class="text-sm text-gray-500 mt-1">Selamat datang, {{ auth.user?.name }}!</p>
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-gray-800">Halo, {{ userName }} 👋</h1>
+        <p class="text-sm text-gray-500">{{ today }}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <Loader2 v-if="updatingStatus" class="w-3.5 h-3.5 animate-spin text-gray-400" />
+        <select v-model="currentStatus" @change="updateDriverStatus(currentStatus)"
+          :class="`text-xs font-medium px-3 py-1.5 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 ${statusSelectClass}`">
+          <option value="available">🟢 Available</option>
+          <option value="on_duty">🔵 Sedang Bertugas</option>
+          <option value="rest">🟡 Istirahat</option>
+          <option value="off_duty">⚫ Off Duty</option>
+        </select>
+      </div>
     </div>
 
-    <!-- GPS Tracking Banner -->
+    <!-- ===== JOB OFFER - PRIORITAS UTAMA ===== -->
+    <div v-if="offeredJobs.length > 0" class="space-y-3">
+      <div v-for="job in offeredJobs" :key="job.id"
+        class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 text-white shadow-lg">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+          <p class="text-sm font-semibold text-blue-100">Job Order Baru Untukmu!</p>
+        </div>
+        <p class="text-xl font-bold mb-1">{{ job.job_number }}</p>
+        <p class="text-blue-100 text-sm mb-3">{{ job.customer_name }}</p>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div class="bg-white/10 rounded-xl p-3">
+            <p class="text-xs text-blue-200">Dari</p>
+            <p class="font-semibold text-sm">{{ job.origin_city }}</p>
+          </div>
+          <div class="bg-white/10 rounded-xl p-3">
+            <p class="text-xs text-blue-200">Ke</p>
+            <p class="font-semibold text-sm">{{ job.destination_city }}</p>
+          </div>
+          <div class="bg-white/10 rounded-xl p-3">
+            <p class="text-xs text-blue-200">Berat</p>
+            <p class="font-semibold text-sm">{{ job.cargo_weight_kg?.toLocaleString() ?? '-' }} kg</p>
+          </div>
+          <div class="bg-white/10 rounded-xl p-3">
+            <p class="text-xs text-blue-200">Tipe</p>
+            <p class="font-semibold text-sm">{{ job.cargo_type ?? '-' }}</p>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button @click="acceptJob(job)" :disabled="respondingJob === job.id"
+            class="flex-1 bg-white text-blue-600 font-bold py-3 rounded-xl hover:bg-blue-50 transition disabled:opacity-50 flex items-center justify-center gap-2">
+            <Loader2 v-if="respondingJob === job.id" class="w-4 h-4 animate-spin" />
+            <CheckCircle v-else class="w-4 h-4" />
+            Terima Job
+          </button>
+          <button @click="openRejectModal(job)" :disabled="respondingJob === job.id"
+            class="flex-1 bg-white/20 text-white font-medium py-3 rounded-xl hover:bg-white/30 transition disabled:opacity-50 flex items-center justify-center gap-2">
+            <XCircle class="w-4 h-4" />
+            Tolak
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== GPS TRACKING BANNER ===== -->
     <div :class="`rounded-xl border p-4 shadow-sm transition ${
       gps.isTracking ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'
     }`">
@@ -61,32 +118,7 @@
       </div>
     </div>
 
-    <!-- Status Driver -->
-    <div class="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="font-semibold">Status Saya</h2>
-        <div class="flex items-center gap-2">
-          <span :class="`px-3 py-1 rounded-full text-xs font-medium ${statusClass(currentStatus)}`">
-            {{ statusLabel(currentStatus) }}
-          </span>
-          <Loader2 v-if="updatingStatus" class="w-3.5 h-3.5 animate-spin text-gray-400" />
-        </div>
-      </div>
-      <div class="flex gap-2 flex-wrap">
-        <button v-for="s in driverStatuses" :key="s.value"
-          @click="updateDriverStatus(s.value)"
-          :disabled="updatingStatus || currentStatus === s.value"
-          :class="`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            currentStatus === s.value
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          } disabled:opacity-50`">
-          {{ s.label }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Stats -->
+    <!-- ===== STATS ===== -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div v-for="stat in stats" :key="stat.label"
         class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
@@ -103,7 +135,7 @@
       </div>
     </div>
 
-    <!-- Tab Filter Jobs -->
+    <!-- ===== TAB JOBS ===== -->
     <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       <div class="flex border-b border-gray-100">
         <button v-for="tab in tabs" :key="tab.value"
@@ -116,9 +148,7 @@
           {{ tab.label }}
           <span v-if="tabCount(tab.value) > 0"
             :class="`ml-1 text-xs px-1.5 py-0.5 rounded-full ${
-              activeTab === tab.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-600'
+              activeTab === tab.value ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
             }`">
             {{ tabCount(tab.value) }}
           </span>
@@ -132,15 +162,14 @@
           <div v-for="i in 2" :key="i" class="h-24 bg-gray-100 animate-pulse rounded-xl" />
         </div>
 
-        <div v-else-if="currentTabJobs.length === 0"
-          class="text-center py-10 text-gray-400">
+        <div v-else-if="currentTabJobs.length === 0" class="text-center py-10 text-gray-400">
           <component :is="tabEmptyIcon" class="w-10 h-10 mx-auto mb-2 opacity-30" />
           <p class="text-sm">{{ tabEmptyText }}</p>
         </div>
 
         <div v-else class="space-y-3">
 
-          <!-- AVAILABLE -->
+          <!-- TAB: AVAILABLE -->
           <template v-if="activeTab === 'available'">
             <div v-for="job in currentTabJobs" :key="job.id"
               class="border border-gray-100 rounded-xl p-4 hover:border-blue-200 transition">
@@ -173,8 +202,7 @@
                 placeholder="Catatan untuk admin (opsional)..."
                 rows="2"
                 class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2 resize-none" />
-              <button @click="handleApply(job)"
-                :disabled="applying === job.id"
+              <button @click="handleApply(job)" :disabled="applying === job.id"
                 class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2">
                 <Loader2 v-if="applying === job.id" class="w-4 h-4 animate-spin" />
                 <CheckCircle v-else class="w-4 h-4" />
@@ -183,7 +211,7 @@
             </div>
           </template>
 
-          <!-- APPLIED -->
+          <!-- TAB: APPLIED -->
           <template v-if="activeTab === 'applied'">
             <div v-for="job in currentTabJobs" :key="job.id"
               class="border border-yellow-100 bg-yellow-50 rounded-xl p-4">
@@ -208,8 +236,7 @@
                   {{ job.destination_address }}
                 </div>
               </div>
-              <button @click="handleCancelApply(job)"
-                :disabled="cancelling === job.id"
+              <button @click="handleCancelApply(job)" :disabled="cancelling === job.id"
                 class="text-xs text-red-500 hover:underline disabled:opacity-50 flex items-center gap-1">
                 <Loader2 v-if="cancelling === job.id" class="w-3 h-3 animate-spin" />
                 <span v-else>Batalkan Apply</span>
@@ -217,7 +244,7 @@
             </div>
           </template>
 
-          <!-- ACTIVE -->
+          <!-- TAB: ACTIVE -->
           <template v-if="activeTab === 'active'">
             <div v-for="job in currentTabJobs" :key="job.id"
               class="border rounded-xl p-4 transition"
@@ -255,10 +282,15 @@
                 {{ job.cargo_description }} · {{ Number(job.cargo_weight_kg).toLocaleString() }} kg
               </div>
 
-              <!-- Status Progress -->
-              <div class="flex items-center gap-1 mb-3">
-                <div v-for="(s, i) in statusFlow" :key="s"
-                  class="flex items-center gap-1">
+              <!-- Progress bar -->
+              <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-1">
+                <div :class="`h-full rounded-full transition-all ${progressColor(job.status)}`"
+                  :style="{ width: progressWidth(job.status) }" />
+              </div>
+
+              <!-- Status flow dots -->
+              <div class="flex items-center gap-1 mb-3 mt-2">
+                <div v-for="(s, i) in statusFlow" :key="s" class="flex items-center gap-1">
                   <div :class="`w-2 h-2 rounded-full ${
                     statusIndex(job.status) >= i ? 'bg-blue-600' : 'bg-gray-200'
                   }`" />
@@ -273,12 +305,12 @@
                 <button v-if="NEXT_STATUS[job.status]"
                   @click="handleUpdateStatus(job)"
                   :disabled="updatingJob === job.id"
-                  class="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-1">
+                  :class="`flex-1 py-2 rounded-xl text-xs font-medium transition flex items-center justify-center gap-1 disabled:opacity-50 ${nextStatusClass(job.status)}`">
                   <Loader2 v-if="updatingJob === job.id" class="w-3 h-3 animate-spin" />
                   <span v-else>{{ nextStatusLabel(job.status) }}</span>
                 </button>
                 <RouterLink v-if="job.status === 'in_transit'"
-                  :to="`/driver/pod/${job.id}`"
+                  :to="`/driver/pod`"
                   class="flex-1 bg-orange-500 text-white py-2 rounded-xl text-xs font-medium hover:bg-orange-600 transition text-center flex items-center justify-center gap-1">
                   <Camera class="w-3 h-3" /> Submit POD
                 </RouterLink>
@@ -286,7 +318,7 @@
             </div>
           </template>
 
-          <!-- HISTORY -->
+          <!-- TAB: HISTORY -->
           <template v-if="activeTab === 'history'">
             <div v-for="job in currentTabJobs" :key="job.id"
               class="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition">
@@ -308,10 +340,31 @@
       </div>
     </div>
 
-    <!-- Toast -->
+    <!-- ===== MODAL TOLAK ===== -->
+    <div v-if="rejectModal.show"
+      class="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4"
+      @click.self="rejectModal.show = false">
+      <div class="bg-white rounded-2xl w-full max-w-md p-5 space-y-4">
+        <h3 class="font-semibold">Tolak Job {{ rejectModal.job?.job_number }}?</h3>
+        <textarea v-model="rejectModal.reason" rows="3"
+          placeholder="Alasan penolakan (opsional)..."
+          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
+        <div class="flex gap-3">
+          <button @click="rejectModal.show = false"
+            class="flex-1 border border-gray-200 py-2.5 rounded-xl text-sm">Batal</button>
+          <button @click="confirmReject" :disabled="respondingJob !== null"
+            class="flex-1 bg-red-500 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2">
+            <Loader2 v-if="respondingJob !== null" class="w-4 h-4 animate-spin" />
+            Ya, Tolak
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
     <Transition name="toast">
       <div v-if="toast"
-        class="fixed bottom-6 right-6 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg text-sm flex items-center gap-2 z-50">
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg text-sm z-50 whitespace-nowrap flex items-center gap-2">
         <CheckCircle class="w-4 h-4 text-green-400" />
         {{ toast }}
       </div>
@@ -323,17 +376,19 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
-  Truck, MapPin, CheckCircle, Package, Star,
-  Loader2, Navigation, Clock, Camera, History, Briefcase
+  CheckCircle, XCircle, Loader2, Truck, MapPin, Package,
+  Star, Navigation, Clock, Camera, History, Briefcase
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import StatusBadge from '@/pages/admin/StatusBadge.vue'
 import api from '@/lib/axios'
 
-const auth  = useAuthStore()
-const toast = ref('')
+const auth     = useAuthStore()
+const userName = computed(() => auth.user?.name ?? 'Driver')
+const today    = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })
+const toast    = ref('')
 
-// ── State ──────────────────────────────────────────────────
+// ── Job State ──────────────────────────────────────────────
 const jobMap = reactive<Record<string, any[]>>({
   available: [], applied: [], active: [], history: []
 })
@@ -341,10 +396,24 @@ const loadingJobs    = ref(false)
 const updatingJob    = ref<number | null>(null)
 const cancelling     = ref<number | null>(null)
 const applying       = ref<number | null>(null)
-const updatingStatus = ref(false)
-const currentStatus  = ref('available')
-const activeTab      = ref('active')
+const respondingJob  = ref<number | null>(null)
 const applyNotes     = reactive<Record<number, string>>({})
+
+// ── Driver Status ──────────────────────────────────────────
+const currentStatus  = ref('available')
+const updatingStatus = ref(false)
+
+// ── Tabs ───────────────────────────────────────────────────
+const activeTab = ref('active')
+const tabs = [
+  { label: 'Aktif',    value: 'active'    },
+  { label: 'Tersedia', value: 'available' },
+  { label: 'Di-apply', value: 'applied'   },
+  { label: 'Riwayat',  value: 'history'   },
+]
+
+// ── Reject Modal ───────────────────────────────────────────
+const rejectModal = reactive({ show: false, job: null as any, reason: '' })
 
 // ── GPS ────────────────────────────────────────────────────
 const gps = reactive({
@@ -360,25 +429,22 @@ const gps = reactive({
   activeJobOrderId: null as number | null,
 })
 
-let watchId: number | null = null
+let watchId:      number | null = null
 let sendInterval: ReturnType<typeof setInterval> | null = null
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
-// ── Tabs ───────────────────────────────────────────────────
-const tabs = [
-  { label: 'Aktif',    value: 'active'    },
-  { label: 'Tersedia', value: 'available' },
-  { label: 'Di-apply', value: 'applied'   },
-  { label: 'Riwayat',  value: 'history'   },
-]
+// ── Computed ───────────────────────────────────────────────
+const offeredJobs = computed(() =>
+  [...jobMap.active, ...jobMap.available].filter(j => j.driver_acceptance === 'waiting')
+)
+
+const activeJobs = computed(() => jobMap.active)
+
+const currentTabJobs = computed(() => jobMap[activeTab.value] ?? [])
 
 const tabEmptyIcon = computed(() => {
-  const map: Record<string, any> = {
-    active: Truck, available: Briefcase, applied: Clock, history: History
-  }
-  return map[activeTab.value] ?? Truck
+  return ({ active: Truck, available: Briefcase, applied: Clock, history: History }[activeTab.value] ?? Truck)
 })
-
 const tabEmptyText = computed(() => ({
   active:    'Tidak ada tugas aktif',
   available: 'Tidak ada job tersedia',
@@ -386,29 +452,12 @@ const tabEmptyText = computed(() => ({
   history:   'Belum ada riwayat pengiriman',
 }[activeTab.value] ?? '-'))
 
-const currentTabJobs = computed(() => jobMap[activeTab.value] ?? [])
-function tabCount(tab: string) { return jobMap[tab]?.length ?? 0 }
-
-// ── Status Flow ───────────────────────────────────────────
-const statusFlow = ['assigned', 'in_progress', 'picked_up', 'in_transit', 'delivered']
-function statusIndex(s: string) { return statusFlow.indexOf(s) }
-
-const NEXT_STATUS: Record<string, string> = {
-  assigned:    'in_progress',
-  in_progress: 'picked_up',
-  picked_up:   'in_transit',
-  in_transit:  'delivered',
-}
-const NEXT_LABEL: Record<string, string> = {
-  assigned:    '🚦 Mulai Proses',
-  in_progress: '📦 Picked Up',
-  picked_up:   '🚚 Mulai Perjalanan',
-  in_transit:  '✅ Tandai Terkirim',
-}
-function nextStatusLabel(status: string) { return NEXT_LABEL[status] ?? 'Update Status' }
-
-// ── Computed ───────────────────────────────────────────────
-const activeJobs = computed(() => jobMap.active)
+const statusSelectClass = computed(() => ({
+  available: 'bg-green-100 text-green-700',
+  on_duty:   'bg-blue-100 text-blue-700',
+  rest:      'bg-yellow-100 text-yellow-700',
+  off_duty:  'bg-gray-100 text-gray-600',
+}[currentStatus.value] ?? 'bg-gray-100'))
 
 const stats = computed(() => [
   {
@@ -433,7 +482,41 @@ const stats = computed(() => [
   },
 ])
 
-// ── Fetch Jobs ────────────────────────────────────────────
+function tabCount(tab: string) { return jobMap[tab]?.length ?? 0 }
+
+// ── Status Flow ────────────────────────────────────────────
+const statusFlow = ['assigned', 'in_progress', 'picked_up', 'in_transit', 'delivered']
+function statusIndex(s: string) { return statusFlow.indexOf(s) }
+
+const NEXT_STATUS: Record<string, string> = {
+  assigned:    'in_progress',
+  in_progress: 'picked_up',
+  picked_up:   'in_transit',
+  in_transit:  'delivered',
+}
+const NEXT_LABEL: Record<string, string> = {
+  assigned:    '🚦 Mulai Proses',
+  in_progress: '📦 Picked Up',
+  picked_up:   '🚚 Mulai Perjalanan',
+  in_transit:  '✅ Tandai Terkirim',
+}
+const NEXT_CLASS: Record<string, string> = {
+  assigned:    'bg-blue-100 text-blue-700 hover:bg-blue-200',
+  in_progress: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200',
+  picked_up:   'bg-purple-100 text-purple-700 hover:bg-purple-200',
+  in_transit:  'bg-green-100 text-green-700 hover:bg-green-200',
+}
+function nextStatusLabel(s: string) { return NEXT_LABEL[s] ?? 'Update Status' }
+function nextStatusClass(s: string) { return NEXT_CLASS[s] ?? 'bg-gray-100 text-gray-600' }
+
+function progressWidth(s: string) {
+  return { assigned:'20%', in_progress:'40%', picked_up:'60%', in_transit:'80%', delivered:'100%' }[s] ?? '0%'
+}
+function progressColor(s: string) {
+  return { assigned:'bg-blue-400', in_progress:'bg-indigo-400', picked_up:'bg-purple-400', in_transit:'bg-orange-400', delivered:'bg-green-500' }[s] ?? 'bg-gray-300'
+}
+
+// ── Fetch ──────────────────────────────────────────────────
 async function fetchMyJobs() {
   loadingJobs.value = true
   try {
@@ -460,7 +543,6 @@ async function fetchMyJobs() {
   }
 }
 
-// ── Fetch Driver Status dari API ──────────────────────────
 async function fetchDriverStatus() {
   try {
     const res = await api.get('/auth/me')
@@ -474,16 +556,8 @@ async function fetchDriverStatus() {
   }
 }
 
-// ── Update Driver Status ──────────────────────────────────
-const driverStatuses = [
-  { value: 'available', label: 'Tersedia'        },
-  { value: 'on_duty',   label: 'Sedang Bertugas' },
-  { value: 'rest',      label: 'Istirahat'        },
-  { value: 'off_duty',  label: 'Tidak Bertugas'  },
-]
-
+// ── Driver Status ──────────────────────────────────────────
 async function updateDriverStatus(status: string) {
-  if (currentStatus.value === status) return
   updatingStatus.value = true
   try {
     await api.patch('/driver/status', { availability_status: status })
@@ -501,7 +575,36 @@ async function updateDriverStatus(status: string) {
   }
 }
 
-// ── Job Actions ───────────────────────────────────────────
+// ── Job Actions ────────────────────────────────────────────
+async function acceptJob(job: any) {
+  respondingJob.value = job.id
+  try {
+    await api.post(`/job-orders/${job.id}/accept`)
+    showToast('✅ Job diterima! Silakan mulai pengiriman.')
+    await fetchMyJobs()
+    activeTab.value = 'active'
+  } catch (e: any) {
+    showToast(e.response?.data?.message ?? 'Gagal menerima job')
+  } finally { respondingJob.value = null }
+}
+
+function openRejectModal(job: any) {
+  rejectModal.job = job; rejectModal.reason = ''; rejectModal.show = true
+}
+
+async function confirmReject() {
+  if (!rejectModal.job) return
+  respondingJob.value = rejectModal.job.id
+  try {
+    await api.post(`/job-orders/${rejectModal.job.id}/reject`, { reason: rejectModal.reason })
+    rejectModal.show = false
+    showToast('Job ditolak, admin akan mendapat notifikasi')
+    await fetchMyJobs()
+  } catch (e: any) {
+    showToast(e.response?.data?.message ?? 'Gagal menolak job')
+  } finally { respondingJob.value = null }
+}
+
 async function handleApply(job: any) {
   applying.value = job.id
   try {
@@ -524,7 +627,7 @@ async function handleCancelApply(job: any) {
   cancelling.value = job.id
   try {
     await api.delete(`/driver/my-jobs/${job.id}/cancel-apply`)
-    jobMap.applied = jobMap.applied.filter(j => j.id !== job.id)
+    jobMap.applied  = jobMap.applied.filter(j => j.id !== job.id)
     jobMap.available.unshift(job)
     showToast('Apply dibatalkan')
   } catch (e: any) {
@@ -555,7 +658,6 @@ async function handleUpdateStatus(job: any) {
       ? JSON.parse(raw.replace(/^=/, '')).message
       : raw?.message
     showToast(msg ?? 'Gagal update status')
-    // Re-fetch untuk sync
     await fetchMyJobs()
   } finally {
     updatingJob.value = null
@@ -603,8 +705,8 @@ async function startGps() {
 }
 
 function stopGps() {
-  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null }
-  if (sendInterval)     { clearInterval(sendInterval); sendInterval = null }
+  if (watchId !== null)  { navigator.geolocation.clearWatch(watchId); watchId = null }
+  if (sendInterval)      { clearInterval(sendInterval); sendInterval = null }
   gps.isTracking = false
   gps.lat = gps.lng = gps.speed = null
   api.post('/gps/offline', {}).catch(() => {})
@@ -635,14 +737,6 @@ async function sendLocation() {
 function statusLabel(s: string) {
   return ({ available:'Tersedia', on_duty:'Sedang Bertugas', rest:'Istirahat', off_duty:'Tidak Bertugas' }[s] ?? s)
 }
-function statusClass(s: string) {
-  return ({
-    available: 'bg-green-100 text-green-700',
-    on_duty:   'bg-blue-100 text-blue-700',
-    rest:      'bg-yellow-100 text-yellow-700',
-    off_duty:  'bg-gray-100 text-gray-600',
-  }[s] ?? 'bg-gray-100 text-gray-600')
-}
 function formatDate(val: string) {
   if (!val) return '-'
   return new Date(val).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })
@@ -655,8 +749,7 @@ function showToast(msg: string) {
 // ── Lifecycle ──────────────────────────────────────────────
 onMounted(async () => {
   await Promise.all([fetchMyJobs(), fetchDriverStatus()])
-  // Poll jobs tiap 30 detik biar realtime
-  pollInterval = setInterval(fetchMyJobs, 30_000)
+  pollInterval = setInterval(fetchMyJobs, 15_000) // 15 detik biar notif job offer cepat muncul
 })
 
 onUnmounted(() => {

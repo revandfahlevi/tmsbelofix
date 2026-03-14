@@ -10,7 +10,6 @@
       <div class="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
         <h2 class="font-semibold">Capture POD</h2>
 
-        <!-- Pilih Job Order -->
         <div>
           <label class="text-xs font-medium text-gray-600">Job Order *</label>
           <select v-model="selectedJobId" class="input-field">
@@ -20,7 +19,7 @@
               ({{ job.origin_city }} → {{ job.destination_city }})
             </option>
           </select>
-          <p v-if="activeJobs.length === 0" class="text-xs text-orange-500 mt-1">
+          <p v-if="activeJobs.length === 0 && !loadingJobs" class="text-xs text-orange-500 mt-1">
             Tidak ada job order aktif
           </p>
         </div>
@@ -58,7 +57,6 @@
         <div>
           <label class="text-xs font-medium text-gray-600">Foto Bukti (maks 5 foto)</label>
           <div class="mt-1">
-            <!-- Preview foto -->
             <div v-if="photoPreviews.length > 0" class="grid grid-cols-3 gap-2 mb-2">
               <div v-for="(preview, i) in photoPreviews" :key="i" class="relative">
                 <img :src="preview" class="w-full h-24 object-cover rounded-xl border border-gray-200" />
@@ -74,7 +72,6 @@
               </div>
             </div>
 
-            <!-- Upload area awal -->
             <div v-else
               @click="triggerFileInput"
               @dragover.prevent
@@ -123,9 +120,19 @@
         <div v-else class="space-y-3 max-h-[600px] overflow-y-auto pr-1">
           <div v-for="pod in myPods" :key="pod.id"
             class="border border-gray-100 rounded-xl overflow-hidden hover:shadow-sm transition">
+            <!-- Foto thumbnail -->
             <div v-if="pod.photos?.length" class="relative">
-              <img :src="`/storage/${pod.photos[0]}`" alt="Bukti"
-                class="w-full h-32 object-cover" />
+              <img :src="photoUrl(pod.photos[0])"
+                alt="Bukti"
+                class="w-full h-32 object-cover"
+                @error="(e: any) => e.target.style.display='none'" />
+              <span :class="`absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge(pod.status)}`">
+                {{ statusLabel(pod.status) }}
+              </span>
+            </div>
+            <!-- Kalau tidak ada foto -->
+            <div v-else class="h-20 bg-gray-100 flex items-center justify-center relative">
+              <FileImage class="w-8 h-8 text-gray-300" />
               <span :class="`absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge(pod.status)}`">
                 {{ statusLabel(pod.status) }}
               </span>
@@ -133,10 +140,7 @@
             <div class="p-3">
               <div class="flex items-start justify-between mb-1">
                 <p class="font-medium text-sm text-blue-600">{{ pod.pod_number }}</p>
-                <span v-if="!pod.photos?.length"
-                  :class="`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge(pod.status)}`">
-                  {{ statusLabel(pod.status) }}
-                </span>
+                <p class="text-xs text-gray-400">{{ pod.photos?.length ?? 0 }} foto</p>
               </div>
               <p class="text-xs text-gray-500">{{ pod.job_order?.job_number ?? '-' }}</p>
               <p class="text-sm text-gray-700 font-medium mt-0.5">{{ pod.recipient_name }}</p>
@@ -157,21 +161,23 @@
 import { ref, computed, reactive, onMounted } from 'vue'
 import { FileImage, Camera, X, Plus, Loader2 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
-import { useJobOrders } from '@/composables/useJobOrders'
 import api from '@/lib/axios'
 
 const auth = useAuthStore()
-const { jobOrders, fetchJobOrders } = useJobOrders()
 
-const fileInputRef    = ref<HTMLInputElement | null>(null)
-const photoPreviews   = ref<string[]>([])
-const photoFiles      = ref<File[]>([])
-const success         = ref(false)
-const submitting      = ref(false)
-const loadingHistory  = ref(false)
-const formError       = ref('')
-const selectedJobId   = ref<any>('')
-const myPods          = ref<any[]>([])
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+const fileInputRef   = ref<HTMLInputElement | null>(null)
+const photoPreviews  = ref<string[]>([])
+const photoFiles     = ref<File[]>([])
+const success        = ref(false)
+const submitting     = ref(false)
+const loadingHistory = ref(false)
+const loadingJobs    = ref(false)
+const formError      = ref('')
+const selectedJobId  = ref<any>('')
+const myPods         = ref<any[]>([])
+const activeJobs     = ref<any[]>([])
 
 const form = reactive({
   recipient_name:         '',
@@ -180,13 +186,29 @@ const form = reactive({
   notes:                  '',
 })
 
-// ── Job orders aktif milik driver ─────────────────────────
-const activeJobs = computed(() =>
-  jobOrders.value.filter(j =>
-    ['in_transit', 'picked_up', 'in_progress', 'assigned'].includes(j.status) &&
-    (j.assigned_driver_id === auth.user?.id || j.driver?.id === auth.user?.id)
-  )
-)
+// ── Fix photo URL ─────────────────────────────────────────
+function photoUrl(path: any): string {
+  if (!path) return ''
+  if (typeof path === 'object' && path.url) return path.url
+  if (typeof path === 'string' && path.startsWith('http')) return path
+  return `${BASE_URL}/storage/${path}`
+}
+
+// ── Fetch active jobs langsung dari driver/my-jobs ────────
+async function fetchActiveJobs() {
+  loadingJobs.value = true
+  try {
+    const res = await api.get('/driver/my-jobs', { params: { filter: 'active', per_page: 50 } })
+    const raw = typeof res.data === 'string'
+      ? JSON.parse(res.data.replace(/^=/, ''))
+      : res.data
+    activeJobs.value = raw?.data?.data ?? raw?.data ?? []
+  } catch {
+    activeJobs.value = []
+  } finally {
+    loadingJobs.value = false
+  }
+}
 
 // ── Fetch riwayat POD driver ──────────────────────────────
 async function fetchMyPods() {
@@ -210,24 +232,19 @@ async function handleSubmit() {
     formError.value = 'Job order dan nama penerima wajib diisi'
     return
   }
-
   submitting.value = true
   formError.value  = ''
-
   try {
     const formData = new FormData()
-    formData.append('job_order_id',           selectedJobId.value)
+    formData.append('job_order_id',           String(selectedJobId.value))
     formData.append('recipient_name',         form.recipient_name)
     formData.append('recipient_phone',        form.recipient_phone)
     formData.append('recipient_relationship', form.recipient_relationship)
     formData.append('notes',                  form.notes)
 
-    // Tambah foto
-    photoFiles.value.forEach((file) => {
-      formData.append('photos[]', file)
-    })
+    photoFiles.value.forEach(file => formData.append('photos[]', file))
 
-    // Ambil koordinat GPS jika ada
+    // GPS koordinat
     if (navigator.geolocation) {
       await new Promise<void>((resolve) => {
         navigator.geolocation.getCurrentPosition(
@@ -236,7 +253,7 @@ async function handleSubmit() {
             formData.append('delivery_lng', String(pos.coords.longitude))
             resolve()
           },
-          () => resolve(), // lanjut meski GPS gagal
+          () => resolve(),
           { timeout: 5000 }
         )
       })
@@ -249,20 +266,16 @@ async function handleSubmit() {
       ? JSON.parse(res.data.replace(/^=/, ''))
       : res.data
 
-    // Tambah ke list riwayat
     myPods.value.unshift(raw.data ?? raw)
-
-    // Reset form
-    success.value        = true
-    selectedJobId.value  = ''
-    photoPreviews.value  = []
-    photoFiles.value     = []
+    success.value = true
+    selectedJobId.value = ''
+    photoPreviews.value = []
+    photoFiles.value    = []
     form.recipient_name         = ''
     form.recipient_phone        = ''
     form.recipient_relationship = ''
-    form.notes                  = ''
+    form.notes = ''
     setTimeout(() => success.value = false, 3000)
-
   } catch (e: any) {
     const raw = e.response?.data
     const msg = typeof raw === 'string'
@@ -280,6 +293,8 @@ function triggerFileInput() { fileInputRef.value?.click() }
 function handleFileChange(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files ?? [])
   addFiles(files)
+  // Reset input agar bisa pilih file yang sama lagi
+  ;(e.target as HTMLInputElement).value = ''
 }
 
 function handleDrop(e: DragEvent) {
@@ -289,8 +304,7 @@ function handleDrop(e: DragEvent) {
 
 function addFiles(files: File[]) {
   const remaining = 5 - photoPreviews.value.length
-  const toAdd = files.slice(0, remaining)
-  toAdd.forEach(file => {
+  files.slice(0, remaining).forEach(file => {
     photoFiles.value.push(file)
     const reader = new FileReader()
     reader.onload = (e) => photoPreviews.value.push(e.target?.result as string)
@@ -317,7 +331,7 @@ function statusBadge(status: string) {
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     submitted: '⏳ Menunggu', verified: '✓ Verified',
-    rejected: '✗ Ditolak', pending: 'Pending',
+    rejected: '✗ Ditolak',   pending:  'Pending',
   }
   return map[status] || status
 }
@@ -331,7 +345,7 @@ function formatDate(val: string) {
 }
 
 onMounted(() => {
-  fetchJobOrders({ per_page: 100 })
+  fetchActiveJobs()
   fetchMyPods()
 })
 </script>

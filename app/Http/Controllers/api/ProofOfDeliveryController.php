@@ -5,12 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ProofOfDelivery;
 use App\Models\JobOrder;
+use App\Models\User;
+use App\Services\FcmService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class ProofOfDeliveryController extends Controller
 {
+    public function __construct(private FcmService $fcm) {}
+
     // GET /api/pods — admin: semua, driver: punya sendiri
     public function index(Request $request): JsonResponse
     {
@@ -49,7 +53,7 @@ class ProofOfDeliveryController extends Controller
     public function show(ProofOfDelivery $proofOfDelivery): JsonResponse
     {
         $proofOfDelivery->load([
-            'jobOrder', 'driver:id,name,phone', 'verifiedBy:id,name'
+            'jobOrder', 'driver:id,name,phone', 'verifiedBy:id,name',
         ]);
 
         return response()->json(['success' => true, 'data' => $proofOfDelivery]);
@@ -67,14 +71,13 @@ class ProofOfDeliveryController extends Controller
             'delivery_lat'           => 'nullable|numeric',
             'delivery_lng'           => 'nullable|numeric',
             'photos'                 => 'nullable|array|max:5',
-            'photos.*'               => 'image|max:5120', // max 5MB per foto
-            'signature'              => 'nullable|string', // base64
+            'photos.*'               => 'image|max:5120',
+            'signature'              => 'nullable|string',
         ]);
 
-        $user = $request->user();
-
-        // Cek job order valid dan milik driver ini
+        $user     = $request->user();
         $jobOrder = JobOrder::findOrFail($validated['job_order_id']);
+
         if ($user->role === 'driver' && $jobOrder->assigned_driver_id !== $user->id) {
             return response()->json([
                 'success' => false,
@@ -82,19 +85,20 @@ class ProofOfDeliveryController extends Controller
             ], 403);
         }
 
-        // Upload foto jika ada
+        // Upload foto
         $photoPaths = [];
         if ($request->hasFile('photos')) {
             foreach ($request->file('photos') as $photo) {
-                $path = $photo->store('pods/photos', 'public');
-                $photoPaths[] = $path;
+                $photoPaths[] = $photo->store('pods/photos', 'public');
             }
         }
 
-        // Simpan signature base64 jika ada
+        // Simpan signature base64
         $signaturePath = null;
         if (!empty($validated['signature'])) {
-            $signatureData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $validated['signature']));
+            $signatureData = base64_decode(
+                preg_replace('#^data:image/\w+;base64,#i', '', $validated['signature'])
+            );
             $signaturePath = 'pods/signatures/' . uniqid() . '.png';
             Storage::disk('public')->put($signaturePath, $signatureData);
         }
@@ -105,11 +109,11 @@ class ProofOfDeliveryController extends Controller
             'pod_number'             => ProofOfDelivery::generatePodNumber(),
             'status'                 => 'submitted',
             'recipient_name'         => $validated['recipient_name'],
-            'recipient_phone'        => $validated['recipient_phone'] ?? null,
+            'recipient_phone'        => $validated['recipient_phone']        ?? null,
             'recipient_relationship' => $validated['recipient_relationship'] ?? null,
-            'notes'                  => $validated['notes'] ?? null,
-            'delivery_lat'           => $validated['delivery_lat'] ?? null,
-            'delivery_lng'           => $validated['delivery_lng'] ?? null,
+            'notes'                  => $validated['notes']                  ?? null,
+            'delivery_lat'           => $validated['delivery_lat']           ?? null,
+            'delivery_lng'           => $validated['delivery_lng']           ?? null,
             'photos'                 => !empty($photoPaths) ? $photoPaths : null,
             'signature_path'         => $signaturePath,
             'delivered_at'           => now(),
@@ -117,6 +121,20 @@ class ProofOfDeliveryController extends Controller
 
         // Update status job order ke delivered
         $jobOrder->update(['status' => 'delivered', 'delivery_actual_at' => now()]);
+
+        // ── Kirim notif ke semua admin ─────────────────────
+        $adminTokens = User::where('role', 'admin')
+            ->whereNotNull('fcm_token')
+            ->pluck('fcm_token')
+            ->toArray();
+
+        if (!empty($adminTokens)) {
+            $this->fcm->notifyAdminPodSubmitted(
+                $adminTokens,
+                $user->name,
+                $jobOrder->job_number
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -141,7 +159,6 @@ class ProofOfDeliveryController extends Controller
             'verified_at' => now(),
         ]);
 
-        // Update job order ke completed
         $proofOfDelivery->jobOrder->update(['status' => 'completed']);
 
         return response()->json([
@@ -177,7 +194,7 @@ class ProofOfDeliveryController extends Controller
         ]);
     }
 
-    // GET /api/pods/job-order/{jobOrderId} — cek POD by job order
+    // GET /api/pods/job-order/{jobOrderId}
     public function getByJobOrder(int $jobOrderId): JsonResponse
     {
         $pod = ProofOfDelivery::with(['driver:id,name', 'verifiedBy:id,name'])

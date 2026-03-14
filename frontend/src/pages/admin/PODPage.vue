@@ -35,7 +35,7 @@
         <input v-model="search" @input="debouncedFetch" placeholder="Cari job order, penerima..."
           class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
-      <select v-model="filterStatus" @change="fetchPods" class="px-3 py-2 text-sm border border-gray-200 rounded-xl">
+      <select v-model="filterStatus" @change="fetchPods()" class="px-3 py-2 text-sm border border-gray-200 rounded-xl">
         <option value="">Semua Status</option>
         <option value="submitted">Menunggu Verifikasi</option>
         <option value="verified">Terverifikasi</option>
@@ -62,12 +62,13 @@
         <!-- Foto -->
         <div class="relative h-44 bg-gray-100">
           <img v-if="pod.photos?.length"
-            :src="`/storage/${pod.photos[0]}`" alt="Bukti POD"
-            class="w-full h-full object-cover" />
+            :src="photoUrl(pod.photos[0])"
+            alt="Bukti POD"
+            class="w-full h-full object-cover"
+            @error="(e: any) => e.target.style.display='none'" />
           <div v-else class="w-full h-full flex items-center justify-center text-gray-300">
             <FileImage class="w-10 h-10" />
           </div>
-          <!-- Status badge -->
           <span :class="`absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge(pod.status)}`">
             {{ statusLabel(pod.status) }}
           </span>
@@ -85,7 +86,6 @@
               <Truck class="w-3 h-3" /> {{ pod.driver?.name ?? '-' }}
             </p>
           </div>
-          <!-- Action buttons untuk submitted -->
           <div v-if="pod.status === 'submitted'" class="flex gap-2 mt-3" @click.stop>
             <button @click="handleVerify(pod)"
               :disabled="actionLoading === pod.id"
@@ -106,14 +106,10 @@
     <!-- Pagination -->
     <div v-if="meta.last_page > 1" class="flex items-center justify-center gap-2">
       <button @click="changePage(meta.current_page - 1)" :disabled="meta.current_page === 1"
-        class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">
-        ← Prev
-      </button>
+        class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">← Prev</button>
       <span class="text-sm text-gray-600">{{ meta.current_page }} / {{ meta.last_page }}</span>
       <button @click="changePage(meta.current_page + 1)" :disabled="meta.current_page === meta.last_page"
-        class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">
-        Next →
-      </button>
+        class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-50">Next →</button>
     </div>
 
     <!-- Modal Detail -->
@@ -122,10 +118,20 @@
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto">
         <div class="relative">
           <img v-if="selectedPod.photos?.length"
-            :src="`/storage/${selectedPod.photos[0]}`" alt="POD"
-            class="w-full h-64 object-cover" />
+            :src="photoUrl(selectedPod.photos[0])"
+            alt="POD"
+            class="w-full h-64 object-cover"
+            @error="(e: any) => e.target.style.display='none'" />
           <div v-else class="w-full h-64 bg-gray-100 flex items-center justify-center text-gray-300">
             <FileImage class="w-16 h-16" />
+          </div>
+          <!-- Multi foto scroll -->
+          <div v-if="selectedPod.photos?.length > 1"
+            class="flex gap-2 px-4 py-2 bg-black/20 overflow-x-auto">
+            <img v-for="(photo, i) in selectedPod.photos" :key="i"
+              :src="photoUrl(photo)"
+              class="h-14 w-14 object-cover rounded-lg cursor-pointer border-2 border-white/50 flex-shrink-0"
+              @error="(e: any) => e.target.style.display='none'" />
           </div>
           <button @click="selectedPod = null"
             class="absolute top-3 right-3 bg-white/80 backdrop-blur rounded-full p-1.5 hover:bg-white">
@@ -197,9 +203,7 @@
         </div>
         <div class="flex gap-2">
           <button @click="rejectModal.show = false"
-            class="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">
-            Batal
-          </button>
+            class="flex-1 border border-gray-200 text-gray-600 py-2 rounded-xl text-sm hover:bg-gray-50">Batal</button>
           <button @click="handleReject"
             :disabled="!rejectModal.reason || actionLoading !== null"
             class="flex-1 bg-red-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
@@ -225,45 +229,46 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { FileImage, Search, Truck, X, CheckCircle, Loader2 } from 'lucide-vue-next'
 import api from '@/lib/axios'
 
-const pods      = ref<any[]>([])
-const loading   = ref(false)
-const search    = ref('')
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+const pods         = ref<any[]>([])
+const loading      = ref(false)
+const search       = ref('')
 const filterStatus = ref('')
 const selectedPod  = ref<any>(null)
 const actionLoading = ref<any>(null)
-const toast     = ref('')
-const meta      = ref({ current_page: 1, last_page: 1, total: 0 })
+const toast        = ref('')
+const meta         = ref({ current_page: 1, last_page: 1, total: 0 })
+const rejectModal  = reactive({ show: false, pod: null as any, reason: '' })
 
-const rejectModal = reactive({ show: false, pod: null as any, reason: '' })
-
-// ── Stats ─────────────────────────────────────────────────
 const pendingCount  = computed(() => pods.value.filter(p => p.status === 'submitted').length)
 const verifiedCount = computed(() => pods.value.filter(p => p.status === 'verified').length)
 const rejectedCount = computed(() => pods.value.filter(p => p.status === 'rejected').length)
+
+// ── Fix photo URL ─────────────────────────────────────────
+function photoUrl(path: any): string {
+  if (!path) return ''
+  if (typeof path === 'object' && path.url) return path.url
+  if (typeof path === 'string' && path.startsWith('http')) return path
+  return `${BASE_URL}/storage/${path}`
+}
 
 // ── Fetch ─────────────────────────────────────────────────
 async function fetchPods(page = 1) {
   loading.value = true
   try {
     const res = await api.get('/pods', {
-      params: {
-        page,
-        per_page: 12,
-        status: filterStatus.value || undefined,
-        search: search.value || undefined,
-      }
+      params: { page, per_page: 12, status: filterStatus.value || undefined, search: search.value || undefined }
     })
     const raw = typeof res.data === 'string'
       ? JSON.parse(res.data.replace(/^=/, ''))
       : res.data
     const data = raw.data
-    pods.value  = data.data ?? data ?? []
-    if (data.meta ?? data.current_page) {
-      meta.value = {
-        current_page: data.meta?.current_page ?? data.current_page ?? 1,
-        last_page:    data.meta?.last_page    ?? data.last_page    ?? 1,
-        total:        data.meta?.total        ?? data.total        ?? pods.value.length,
-      }
+    pods.value = data.data ?? data ?? []
+    meta.value = {
+      current_page: data.meta?.current_page ?? data.current_page ?? 1,
+      last_page:    data.meta?.last_page    ?? data.last_page    ?? 1,
+      total:        data.meta?.total        ?? data.total        ?? pods.value.length,
     }
   } catch {
     pods.value = []
@@ -272,7 +277,6 @@ async function fetchPods(page = 1) {
   }
 }
 
-// ── Verify ────────────────────────────────────────────────
 async function handleVerify(pod: any) {
   actionLoading.value = pod.id
   try {
@@ -280,14 +284,10 @@ async function handleVerify(pod: any) {
     const idx = pods.value.findIndex(p => p.id === pod.id)
     if (idx !== -1) pods.value[idx] = { ...pods.value[idx], status: 'verified' }
     showToast('POD berhasil diverifikasi')
-  } catch (e: any) {
-    showToast('Gagal verifikasi POD')
-  } finally {
-    actionLoading.value = null
-  }
+  } catch { showToast('Gagal verifikasi POD') }
+  finally { actionLoading.value = null }
 }
 
-// ── Reject ────────────────────────────────────────────────
 function openRejectModal(pod: any) {
   rejectModal.pod    = pod
   rejectModal.reason = ''
@@ -298,22 +298,13 @@ async function handleReject() {
   if (!rejectModal.reason) return
   actionLoading.value = rejectModal.pod.id
   try {
-    await api.patch(`/pods/${rejectModal.pod.id}/reject`, {
-      rejection_reason: rejectModal.reason,
-    })
+    await api.patch(`/pods/${rejectModal.pod.id}/reject`, { rejection_reason: rejectModal.reason })
     const idx = pods.value.findIndex(p => p.id === rejectModal.pod.id)
-    if (idx !== -1) pods.value[idx] = {
-      ...pods.value[idx],
-      status: 'rejected',
-      rejection_reason: rejectModal.reason,
-    }
+    if (idx !== -1) pods.value[idx] = { ...pods.value[idx], status: 'rejected', rejection_reason: rejectModal.reason }
     rejectModal.show = false
     showToast('POD ditolak')
-  } catch {
-    showToast('Gagal menolak POD')
-  } finally {
-    actionLoading.value = null
-  }
+  } catch { showToast('Gagal menolak POD') }
+  finally { actionLoading.value = null }
 }
 
 function changePage(page: number) {
@@ -321,14 +312,12 @@ function changePage(page: number) {
   fetchPods(page)
 }
 
-// ── Debounce search ───────────────────────────────────────
 let searchTimer: any = null
 function debouncedFetch() {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => fetchPods(), 400)
 }
 
-// ── Helpers ───────────────────────────────────────────────
 function statusBadge(status: string) {
   const map: Record<string, string> = {
     submitted: 'bg-yellow-100 text-yellow-700',
@@ -341,18 +330,14 @@ function statusBadge(status: string) {
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
-    submitted: 'Menunggu', verified: '✓ Verified',
-    rejected: 'Ditolak', pending: 'Pending',
+    submitted: 'Menunggu', verified: '✓ Verified', rejected: 'Ditolak', pending: 'Pending',
   }
   return map[status] || status
 }
 
 function formatDate(val: string) {
   if (!val) return '-'
-  return new Date(val).toLocaleDateString('id-ID', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return new Date(val).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function showToast(msg: string) {
