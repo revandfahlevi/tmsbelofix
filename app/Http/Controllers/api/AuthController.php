@@ -3,114 +3,181 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Requests\Auth\RegisterRequest;
-use App\Http\Requests\Auth\RefreshTokenRequest;
-use App\Services\AuthService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;  // ← tambahkan ini
+use App\Models\User;
+use App\Http\Resources\UserResource;
 
 class AuthController extends Controller
 {
-    public function __construct(private AuthService $authService) {}
-
-    // POST /api/v1/auth/login
-    public function login(LoginRequest $request): JsonResponse
+    // ── Login biasa (email + password) ────────────────────────
+    public function login(Request $request)
     {
-        try {
-            $result = $this->authService->login(
-                credentials: $request->only('email', 'password'),
-                deviceName: $request->input('device_name', $request->userAgent() ?? 'web')
-            );
-            return response()->json(['success' => true, 'message' => 'Login berhasil.', 'data' => $result]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => 'Kredensial tidak valid.', 'errors' => $e->errors()], 401);
+        $request->validate([
+            'email'       => 'required|email',
+            'password'    => 'required|string',
+            'device_name' => 'nullable|string|max:255',
+            'fcm_token'   => 'nullable|string',
+        ]);
+
+        $user = User::where('email', $request->email)
+                    ->with('driverProfile')
+                    ->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json(['message' => 'Email atau password salah.'], 401);
         }
-    }
 
-    // POST /api/v1/admin/register  (admin only — dicek di route middleware)
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        try {
-            $result = $this->authService->register($request->validated());
-            return response()->json(['success' => true, 'message' => 'Akun berhasil dibuat.', 'data' => $result], 201);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal membuat akun: ' . $e->getMessage()], 500);
+        if ($user->status !== 'active') {
+            return response()->json(['message' => 'Akun Anda telah dinonaktifkan. Hubungi administrator.'], 403);
         }
-    }
 
-    // POST /api/v1/auth/refresh
-    public function refresh(RefreshTokenRequest $request): JsonResponse
-    {
-        try {
-            $result = $this->authService->refreshToken($request->input('refresh_token'));
-            return response()->json(['success' => true, 'message' => 'Token berhasil diperbarui.', 'data' => $result]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => 'Refresh token tidak valid.', 'errors' => $e->errors()], 401);
-        }
-    }
+        // Hapus token lama
+        $user->tokens()->where('name', $request->device_name ?? 'api')->delete();
 
-    // POST /api/v1/auth/logout
-    public function logout(Request $request): JsonResponse
-    {
-        $this->authService->logout($request->user());
-        return response()->json(['success' => true, 'message' => 'Logout berhasil.']);
-    }
+        $token = $user->createToken(
+            $request->device_name ?? 'api',
+            $this->getAbilities($user->role)
+        );
 
-    // POST /api/v1/auth/logout-all
-    public function logoutAll(Request $request): JsonResponse
-    {
-        $this->authService->logoutAll($request->user());
-        return response()->json(['success' => true, 'message' => 'Logout dari semua perangkat berhasil.']);
-    }
+        $user->update([
+            'last_login_at' => now(),
+            'last_login_ip' => $request->ip(),
+            'is_online'     => true,
+            'fcm_token'     => $request->fcm_token ?? $user->fcm_token,
+        ]);
 
-    // GET /api/v1/auth/me
-    public function me(Request $request): JsonResponse
-    {
-        $user = $request->user()->load('driverProfile');
         return response()->json([
-            'success' => true,
-            'data' => [
-                'id'             => $user->id,
-                'name'           => $user->name,
-                'email'          => $user->email,
-                'phone'          => $user->phone,
-                'role'           => $user->role,
-                'status'         => $user->status,
-                'employee_id'    => $user->employee_id,
-                'avatar'         => $user->avatar,
-                'last_login_at'  => $user->last_login_at,
-                'abilities'      => $user->getAbilities(),
-                'driver_profile' => $user->isDriver() ? $user->driverProfile : null,
-            ],
+            'token'      => $token->plainTextToken,
+            'token_type' => 'Bearer',
+            'user'       => new UserResource($user),
         ]);
     }
 
-    // PUT /api/v1/auth/update-fcm-token
-    public function updateFcmToken(Request $request): JsonResponse
+    // ── Logout ─────────────────────────────────────────────────
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+        $request->user()->update(['is_online' => false]);
+
+        return response()->json(['message' => 'Berhasil logout.']);
+    }
+
+    // ── Me ──────────────────────────────────────────────────────
+    public function me(Request $request)
+    {
+        return new UserResource(
+            $request->user()->load(['driverProfile'])
+        );
+    }
+
+    // ── Update FCM Token ────────────────────────────────────────
+    public function updateFcmToken(Request $request)
     {
         $request->validate(['fcm_token' => 'required|string']);
         $request->user()->update(['fcm_token' => $request->fcm_token]);
-        return response()->json(['success' => true, 'message' => 'FCM token berhasil diperbarui.']);
+
+        return response()->json(['message' => 'FCM token updated.']);
     }
 
-    // PUT /api/v1/auth/change-password
-    public function changePassword(Request $request): JsonResponse
+    // ── Refresh Token ───────────────────────────────────────────
+    public function refreshToken(Request $request)
     {
-        $request->validate([
-            'current_password' => 'required|string',
-            'new_password'     => 'required|string|min:8|confirmed',
-        ]);
-
         $user = $request->user();
+        $request->user()->currentAccessToken()->delete();
+        $token = $user->createToken('api', $this->getAbilities($user->role));
 
-        if (!\Illuminate\Support\Facades\Hash::check($request->current_password, $user->password)) {
-            return response()->json(['success' => false, 'message' => 'Password lama tidak benar.'], 422);
+        return response()->json(['token' => $token->plainTextToken]);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // GOOGLE OAUTH
+    // ══════════════════════════════════════════════════════════════
+
+    // ── Step 1: Redirect ke halaman login Google ───────────────
+    public function redirectToGoogle()
+    {
+        return Socialite::driver('google')
+            ->stateless()
+            ->redirect();
+    }
+
+    // ── Step 2: Handle callback setelah user login di Google ───
+    public function handleGoogleCallback()
+    {
+        try {
+            $googleUser = Socialite::driver('google')->stateless()->user();
+        } catch (\Exception $e) {
+            $frontendUrl = config('app.frontend_url', 'http://localhost:8080');
+            return redirect("{$frontendUrl}/login?error=google_failed");
         }
 
-        $user->update(['password' => $request->new_password]);
-        $user->tokens()->delete(); // force re-login
+        // Cari user berdasarkan email atau google_id
+        $user = User::where('email', $googleUser->getEmail())
+                    ->orWhere('google_id', $googleUser->getId())
+                    ->first();
 
-        return response()->json(['success' => true, 'message' => 'Password berhasil diubah. Silakan login kembali.']);
+        if (!$user) {
+            // Buat user baru
+            $user = User::create([
+                'name'              => $googleUser->getName(),
+                'email'             => $googleUser->getEmail(),
+                'google_id'         => $googleUser->getId(),
+                'avatar'            => $googleUser->getAvatar(),
+                'password'          => bcrypt(Str::random(32)),
+                'role'              => 'user',
+                'status'            => 'active',
+                'email_verified_at' => now(),
+            ]);
+        } else {
+            // Update data Google jika sudah ada
+            $user->update([
+                'google_id' => $googleUser->getId(),
+                'avatar'    => $user->avatar ?? $googleUser->getAvatar(),
+            ]);
+        }
+
+        // Cek status akun
+        if ($user->status !== 'active') {
+            $frontendUrl = config('app.frontend_url', 'http://localhost:8080');
+            return redirect("{$frontendUrl}/login?error=account_suspended");
+        }
+
+        // Buat token baru, hapus token Google lama
+        $user->tokens()->where('name', 'google-oauth')->delete();
+        $token = $user->createToken('google-oauth', $this->getAbilities($user->role))
+                      ->plainTextToken;
+
+        // Update last login
+        $user->update([
+            'last_login_at' => now(),
+            'last_login_ip' => request()->ip(),
+            'is_online'     => true,
+        ]);
+
+        // Kirim token ke frontend Vue via redirect
+        $frontendUrl = config('app.frontend_url', 'http://localhost:8080');
+        $userData    = urlencode(json_encode([
+            'id'    => $user->id,
+            'name'  => $user->name,
+            'email' => $user->email,
+            'role'  => $user->role,
+        ]));
+
+        return redirect("{$frontendUrl}/auth/callback?token={$token}&user={$userData}");
+    }
+
+    // ── Helper: abilities per role ─────────────────────────────
+    private function getAbilities(string $role): array
+    {
+        return match ($role) {
+            'admin'  => ['*'],
+            'driver' => ['orders:read', 'orders:update', 'gps:update', 'pod:create', 'status:update'],
+            'user'   => ['orders:read', 'tracking:read', 'reports:read'],
+            default  => ['orders:read'],
+        };
     }
 }

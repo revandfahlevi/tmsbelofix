@@ -3,39 +3,38 @@ import { ref } from 'vue'
 import api from '@/lib/axios'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<any>(null)
-  const token = ref<string | null>(null)
+  const user    = ref<any>(null)
+  const token   = ref<string | null>(null)
   const loading = ref(false)
-  const error = ref('')
+  const error   = ref('')
 
-async function login(email: string, password: string) {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await api.post('/auth/login', { email, password })
-    
-    // Handle jika response masih string
-    const rawData = typeof res.data === 'string' 
-      ? JSON.parse(res.data.replace(/^=/, '')) 
-      : res.data
+  async function login(email: string, password: string) {
+    loading.value = true
+    error.value   = ''
+    try {
+      const res = await api.post('/auth/login', { email, password })
 
-    const data = rawData.data
-    token.value = data.access_token
-    user.value = data.user
-    localStorage.setItem('tms_token', token.value!)
-    localStorage.setItem('tms_user', JSON.stringify(data.user))
-    return true
-  } catch (e: any) {
-    error.value = e.response?.data?.message || 'Login gagal'
-    return false
-  } finally {
-    loading.value = false
+      const rawData = typeof res.data === 'string'
+        ? JSON.parse(res.data.replace(/^=/, ''))
+        : res.data
+
+      const data    = rawData.data
+      token.value   = data.access_token
+      user.value    = data.user
+      localStorage.setItem('tms_token', token.value!)
+      localStorage.setItem('tms_user', JSON.stringify(data.user))
+      return true
+    } catch (e: any) {
+      error.value = e.response?.data?.message || 'Login gagal'
+      return false
+    } finally {
+      loading.value = false
+    }
   }
-}
 
   async function logout() {
     try { await api.post('/auth/logout') } catch {}
-    user.value = null
+    user.value  = null
     token.value = null
     localStorage.removeItem('tms_token')
     localStorage.removeItem('tms_user')
@@ -46,11 +45,29 @@ async function login(email: string, password: string) {
     const u = localStorage.getItem('tms_user')
     if (t && u) {
       token.value = t
-      user.value = JSON.parse(u)
+      user.value  = JSON.parse(u)
     }
+  }
+
+  // ── Dipakai oleh Google OAuth callback ──────────────────────
+  function setTokenAndUser(newToken: string, newUser: any) {
+    token.value = newToken
+    user.value  = newUser
+    localStorage.setItem('tms_token', newToken)
+    localStorage.setItem('tms_user', JSON.stringify(newUser))
   }
 
   const isLoggedIn = () => !!token.value
 
-  return { user, token, loading, error, login, logout, loadFromStorage, isLoggedIn }
+  return {
+    user,
+    token,
+    loading,
+    error,
+    login,
+    logout,
+    loadFromStorage,
+    isLoggedIn,
+    setTokenAndUser, // ← method baru untuk Google OAuth
+  }
 })
